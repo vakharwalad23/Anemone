@@ -80,6 +80,24 @@ final class AneTarget {
         window.rewind(count)
     }
 
+    /// Cached tokens the next call replays because KV writes start at multiples of 4.
+    var replay: Int { window.replay }
+
+    /// Runs `tree` after the cached tokens without keeping it: the target's choice and taps for every node.
+    func verify(_ tree: DraftTree) async throws -> TargetStep {
+        let plan = try window.plan(tree.tokens)
+        let replay = plan.newRows.lowerBound
+        let rung = smallestRung(holding: plan)
+        let mask = treeMask(context: rung, width: plan.width, offset: plan.offset, replay: replay, tree: tree)
+        let positions = treePositions(width: plan.width, offset: plan.offset, replay: replay, tree: tree)
+        return try await execute(plan, rung: rung, positions: positions, mask: mask)
+    }
+
+    /// Keeps the accepted path of the last verified tree; only its first `inPlace` tokens have KV in their own slots.
+    func accept(_ tokens: [Int32], inPlace: Int) {
+        window.accept(tokens, inPlace: inPlace)
+    }
+
     /// Runs `tokens` after the ones already in the cache, splitting them over as many calls as needed.
     func forward(_ tokens: [Int32]) async throws -> TargetStep {
         var step = TargetStep()
@@ -88,9 +106,7 @@ final class AneTarget {
             let end = min(tokens.count, start + window.capacity)
             let chunk = Array(tokens[start..<end])
             let plan = try window.plan(chunk)
-            // the smallest rung that holds the call reads the least KV (lab night run: 60.5 ms at ctx 256 vs 65.3 at 1024)
-            let rung = rungs.first { $0 >= plan.offset + plan.width } ?? window.context
-            let part = try await execute(plan, rung: rung)
+            let part = try await execute(plan, rung: smallestRung(holding: plan))
             window.commit(chunk)
             step.tokens += part.tokens
             step.taps += part.taps
@@ -108,12 +124,19 @@ final class AneTarget {
         }
     }
 
-    private func execute(_ plan: TargetCall, rung: Int) async throws -> TargetStep {
+    /// The smallest rung that holds the call reads the least KV (lab night run: 60.5 ms at ctx 256 vs 65.3 at 1024).
+    private func smallestRung(holding plan: TargetCall) -> Int {
+        rungs.first { $0 >= plan.offset + plan.width } ?? window.context
+    }
+
+    private func execute(_ plan: TargetCall, rung: Int, positions: [UInt16]? = nil, mask: [Float16]? = nil) async throws -> TargetStep {
         let width = plan.width
+        let positions = positions ?? (plan.offset..<(plan.offset + width)).map { UInt16($0) }
+        let mask = mask ?? causalMask(context: rung, width: width, offset: plan.offset)
         let shared: [String: NDArray] = [
-            "position_ids": NDArray(scalars: (plan.offset..<(plan.offset + width)).map { UInt16($0) }, shape: [1, width]),
+            "position_ids": NDArray(scalars: positions, shape: [1, width]),
             "in_step": NDArray(scalars: [Int32(plan.offset)], shape: [1]),
-            "causal_mask": ndArray(causalMask(context: rung, width: width, offset: plan.offset), shape: [1, rung, 1, width], type: .float16),
+            "causal_mask": ndArray(mask, shape: [1, rung, 1, width], type: .float16),
         ]
         var current = ndArray(embeddings.rows(plan.batch, width: width), shape: [1, width, 1, embeddings.hiddenSize], type: .float16)
         var taps: [(values: [Float16], width: Int)] = []

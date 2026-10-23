@@ -4,6 +4,8 @@ import Foundation
 struct Draft {
     let tokens: [Int32]
     let confidence: [Float]
+    /// The drafter's runner-up at each step; empty for programs exported without it.
+    let second: [Int32]
 }
 
 /// One cache size of the drafter: its draft and inject functions and the KV cache they share.
@@ -29,6 +31,8 @@ final class Drafter {
     static let blockSize = 7
     static let maxPrefix = 4
     static let injectRows = 64
+    /// Rows of the verify call the drafter fills: replayed tokens, the golden one, the chain and side branches.
+    static let verifyWidth = 16
 
     let tapWidth: Int
     private let caches: [DrafterCache]
@@ -122,7 +126,10 @@ final class Drafter {
         let cache = caches[active]
         var outputs = try await Anemone.run(cache.main, inputs: inputs, keys: &cache.keys, values: &cache.values, names: ("k_cache", "v_cache"))
         length += rows
-        return Draft(tokens: scalars(try outputs.array("tokens"), as: Int32.self), confidence: scalars(try outputs.array("confidence"), as: Float.self))
+        let second = outputs.names.contains("second") ? scalars(try outputs.array("second"), as: Int32.self) : []
+        return Draft(
+            tokens: scalars(try outputs.array("tokens"), as: Int32.self), confidence: scalars(try outputs.array("confidence"), as: Float.self),
+            second: second)
     }
 
     /// Moves to the smallest cache that holds `slots`, carrying the KV written so far.

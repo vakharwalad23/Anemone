@@ -58,16 +58,19 @@ final class Speculator {
                 var began = ContinuousClock.now
                 let draft = try await drafter.step(taps: pending, golden: golden)
                 stats.draftSeconds += seconds(since: began)
+                // the rows a width-16 call has left after the replay and the chain go to the likeliest side branches
+                let budget = draft.second.isEmpty ? 0 : max(0, Drafter.verifyWidth - target.replay - 1 - draft.tokens.count)
+                let tree = DraftTree(golden: golden, chain: draft.tokens, second: draft.second, confidence: draft.confidence, budget: budget)
                 began = ContinuousClock.now
-                let verify = try await target.forward([golden] + draft.tokens)
+                let verify = try await target.verify(tree)
                 stats.verifySeconds += seconds(since: began)
-                let accepted = acceptedPrefix(draft.tokens, verify.tokens)
-                target.rewind(draft.tokens.count - accepted)
-                pending = Array(verify.taps[..<((accepted + 1) * drafter.tapWidth)])
-                golden = verify.tokens[accepted]
-                fresh = Array(draft.tokens[..<accepted]) + [golden]
+                let path = tree.acceptedPath(predicted: verify.tokens)
+                target.accept(path.map { tree.tokens[$0] }, inPlace: path.enumerated().prefix { $0.offset == $0.element }.count)
+                pending = path.flatMap { verify.taps[($0 * drafter.tapWidth)..<(($0 + 1) * drafter.tapWidth)] }
+                golden = verify.tokens[path[path.count - 1]]
+                fresh = path.dropFirst().map { tree.tokens[$0] } + [golden]
                 stats.cycles += 1
-                stats.acceptedDrafts += accepted
+                stats.acceptedDrafts += path.count - 1
             } else {
                 golden = try await target.forward([golden]).tokens[0]
                 fresh = [golden]
