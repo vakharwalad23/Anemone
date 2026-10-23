@@ -136,6 +136,7 @@ Working today: Qwen3-8B with thinking off, greedy decoding, up to 1024 tokens of
 - [Architecture](docs/architecture.md): parts, decode loop, model pipeline.
 - [Math](docs/math.md): the formulas behind speed, energy and quality, with worked examples.
 - [Benchmarks](docs/benchmarks.md): every measurement, with setup and method.
+- [Usage](docs/usage.md): commands, the server API, the Swift API.
 - [Converting a model](docs/convert.md).
 - [Contributing](CONTRIBUTING.md): measurements from other Macs are the most useful contribution.
 
