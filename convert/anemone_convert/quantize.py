@@ -9,7 +9,7 @@ from transformers import AutoTokenizer, Qwen3Config
 from transformers.models.qwen3.modeling_qwen3 import Qwen3DecoderLayer, Qwen3RMSNorm
 
 from anemone_convert.lut import palettize
-from anemone_convert.target import inverse_frequencies, read_tensors
+from anemone_convert.target import head_name, inverse_frequencies, read_tensors
 
 STDLIB = Path(sysconfig.get_paths()["stdlib"])
 # prose, reference docs and code that every Python install has; chat answers come from the model itself
@@ -143,7 +143,7 @@ def quantize(checkpoint: Path, calibration: dict[str, list[int]], out: Path, dev
     with torch.device("meta"):
         norm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
     norm = load_weights(norm, checkpoint, "model.norm.", device)
-    head = read_tensors(checkpoint, ["lm_head.weight"], torch.float32)["lm_head.weight"]
+    head = read_tensors(checkpoint, [head_name(checkpoint)], torch.float32)[head_name(checkpoint)]
     head = palettize(head, sum(gram(norm(h)[0]) for h in hidden.values()).cpu(), bits, group_rows)
     writer.add("head.safetensors", {"model.norm.weight": norm.weight, "lm_head.weight": head})
     writer.close()

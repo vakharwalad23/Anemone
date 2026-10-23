@@ -11,7 +11,7 @@ def main() -> None:
 
     quant = sub.add_parser("quantize", help="GPTQ the target onto 4-bit lookup tables, one layer at a time (needs --extra export)")
     quant.add_argument("--model", default="Qwen/Qwen3-8B", help="Hugging Face id of the bf16 target")
-    quant.add_argument("--chat-model", default="mlx-community/Qwen3-8B-4bit", help="MLX copy of the target that writes the chat calibration")
+    quant.add_argument("--chat-model", default="mlx-community/Qwen3-8B-4bit", help="MLX copy of the target; writes the chat calibration")
     quant.add_argument("--chat-calibration", type=Path, help="JSON of token ids to use instead of generating chat answers")
     quant.add_argument("--device", default="mps")
     quant.add_argument("--out", type=Path, required=True)
@@ -20,6 +20,7 @@ def main() -> None:
     target.add_argument("--checkpoint", type=Path, required=True, help="palettized checkpoint folder with palettization.json")
     target.add_argument("--context", type=int, default=4096, help="largest context rung; rungs double from 256")
     target.add_argument("--drafter", default=DRAFTER, help="drafter whose target_layer_ids set the taps")
+    target.add_argument("--layers-per-chunk", type=int, default=9, help="layers per ANE program; 18 suits a 4B model")
     target.add_argument("--out", type=Path, required=True)
 
     drafter = sub.add_parser("drafter", help="export the DSpark drafter as a GPU program (needs --extra export)")
@@ -53,8 +54,9 @@ def main() -> None:
 
         from anemone_convert.target import export_target
 
-        taps = json.loads((Path(snapshot_download(args.drafter, allow_patterns=["config.json"])) / "config.json").read_text())["target_layer_ids"]
-        export_target(args.checkpoint, taps, args.context, args.out)
+        config = Path(snapshot_download(args.drafter, allow_patterns=["config.json"])) / "config.json"
+        taps = json.loads(config.read_text())["target_layer_ids"]
+        export_target(args.checkpoint, taps, args.context, args.out, args.layers_per_chunk)
     elif args.command == "drafter":
         from anemone_convert.drafter import export_drafter
 

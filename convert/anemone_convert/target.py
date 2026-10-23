@@ -39,6 +39,7 @@ WIDTHS = (8, 16, 32, 64)
 MIN_CONTEXT = BaseForCausalLMForiOS.IOS_STATIC_MIN_CACHE_LEN
 INTERLEAVE = BaseForCausalLMForiOS.KV_CACHE_INTERLEAVE_FACTOR
 TRACE_WIDTH = 8
+# 9 layers of an 8B (about 0.84 GB at 4 bits) per ANE program; smaller models fit more layers per program
 LAYERS_PER_CHUNK = 9
 
 
@@ -139,7 +140,7 @@ class TargetChunk(nn.Module):
             for name, _ in self.layers[slot].named_parameters()
         }
         if self.is_last:
-            names |= {"norm.weight": "model.norm.weight", "lm_head.weight": "lm_head.weight"}
+            names |= {"norm.weight": "model.norm.weight", "lm_head.weight": head_name(checkpoint)}
         tensors = read_tensors(checkpoint, list(names.values()))
         state = {key: tensors[source] for key, source in names.items()}
         for key, value in state.items():
@@ -149,7 +150,8 @@ class TargetChunk(nn.Module):
 
     def reference_inputs(self) -> dict[str, torch.Tensor]:
         context = self.config.max_position_embeddings
-        cache = torch.zeros(self.end - self.start, 1, self.config.num_key_value_heads * self.config.head_dim, 1, context, dtype=torch.float16)
+        kv_width = self.config.num_key_value_heads * self.config.head_dim
+        cache = torch.zeros(self.end - self.start, 1, kv_width, 1, context, dtype=torch.float16)
         return {
             TRANSFORMER_INPUT_NAME: torch.randn(1, TRACE_WIDTH, 1, self.config.hidden_size, dtype=torch.float16),
             POSITION_IDS_INPUT_NAME: torch.arange(TRACE_WIDTH).to(torch.uint16).unsqueeze(0),
@@ -189,7 +191,8 @@ def palettization_config(scheme: dict) -> dict:
     granularity = {"type": "per_grouped_channel", "axis": 0, "group_size": scheme["group_rows"]}
     weight = {"n_bits": scheme["bits"], "granularity": granularity, "enable_per_channel_scale": scheme["channel_scale"]}
     # weights already hold at most 2**bits values per group, so exact clustering just recovers them
-    return {"global_config": {"op_state_spec": {"weight": weight}, "enable_fast_kmeans_mode": False}, "module_type_configs": preset["module_type_configs"]}
+    global_config = {"op_state_spec": {"weight": weight}, "enable_fast_kmeans_mode": False}
+    return {"global_config": global_config, "module_type_configs": preset["module_type_configs"]}
 
 
 def to_program(chunk: TargetChunk) -> AIProgram:
@@ -221,15 +224,21 @@ def to_program(chunk: TargetChunk) -> AIProgram:
     return program
 
 
-def export_target(checkpoint: Path, taps: list[int], context: int, out: Path) -> list[Path]:
+def head_name(checkpoint: Path) -> str:
+    """The output layer's tensor: models with tied embeddings reuse the embedding table."""
+    shard_of = json.loads((checkpoint / "model.safetensors.index.json").read_text())["weight_map"]
+    return "lm_head.weight" if "lm_head.weight" in shard_of else "model.embed_tokens.weight"
+
+
+def export_target(checkpoint: Path, taps: list[int], context: int, out: Path, layers_per_chunk: int = LAYERS_PER_CHUNK) -> list[Path]:
     """Export a palettized checkpoint as 9-layer ANE chunks with context rungs up to `context`."""
     config = Qwen3Config.from_pretrained(checkpoint)
     config.max_position_embeddings = context
     scheme = json.loads((checkpoint / "palettization.json").read_text())
     out.mkdir(parents=True, exist_ok=True)
     paths = []
-    for start in range(0, config.num_hidden_layers, LAYERS_PER_CHUNK):
-        end = min(start + LAYERS_PER_CHUNK, config.num_hidden_layers)
+    for start in range(0, config.num_hidden_layers, layers_per_chunk):
+        end = min(start + layers_per_chunk, config.num_hidden_layers)
         chunk = TargetChunk(config, start, end, taps)
         chunk.load_checkpoint(checkpoint)
         chunk = chunk.to(torch.float16).eval()
