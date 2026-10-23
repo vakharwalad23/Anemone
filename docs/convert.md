@@ -29,7 +29,7 @@ uv run --project convert anemone-convert package --chunks work/qwen3-8b-chunks -
 |---|---|---|---|
 | `quantize` | Runs the bf16 model one layer at a time over calibration text, then replaces every linear layer with 4-bit lookup-table weights chosen by GPTQ | not measured yet in the converter (GPTQ alone took about 30 min in the lab) | not measured |
 | `target` | Exports the quantized checkpoint as four 9-layer Core AI programs with call widths 8, 16, 32, 64 and context rungs from 256 up to `--context` | 354 s for the four chunks | 11.7 GB |
-| `drafter` | Exports the DSpark drafter as one static-shape int4 GPU program | about 2 min (134 s in the lab) | not measured |
+| `drafter` | Exports the DSpark drafter as one static-shape int4 GPU program with two entry points: `main` (draft) and `inject` (prompt) | about 2 min (134 s in the lab) | not measured |
 | `package` | Links the programs into a folder, writes the fp16 embedding table, the tokenizer files and `anemone.json` | seconds | small |
 
 - `quantize` calibrates on six Python standard library files (prose, docs and code) and on the model's own answers to 16 chat prompts. It writes those answers with the MLX copy of the model, so the first run downloads `mlx-community/Qwen3-8B-4bit` (4.6 GB). Pass `--chat-calibration answers.json` to reuse a saved set.
