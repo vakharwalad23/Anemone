@@ -1,6 +1,6 @@
 # Architecture
 
-Status: design. Timings come from the Python lab prototype and a Swift timing tool on an M3 Pro, macOS 27.0.1, AC power. The Swift engine described here is not built yet.
+Timings are from the Swift engine (`anemone bench`) and the lab prototype it was built from, on an M3 Pro, macOS 27.0.1, AC power. Trees and confidence scheduling are not built yet.
 
 ## Parts
 
@@ -42,15 +42,15 @@ sequenceDiagram
     end
 ```
 
-- One cycle costs 21.1 ms of drafting and 67.5 ms of verifying, measured through Python. The Swift timing tool measured the verify at 65.3 ms.
-- A guess is kept only if it equals the 8B's top choice at that position, so the output is identical to plain greedy decoding. The lab checked this token for token on every run.
+- One cycle costs 20.6 ms of drafting and 62.3 ms of verifying in the Swift engine (`anemone bench` mean), plus about 0.1 ms on the CPU.
+- A guess is kept only if it equals the 8B's top choice at that position, so the output is identical to plain greedy decoding. `anemone bench` checks this token for token on every prompt.
 - The token after the last kept guess comes free from the same verify call, so each cycle yields at least one token.
 
 ## The large model on the ANE
 
 - Qwen3-8B has 36 layers. It is split into four chunks of 9 layers. The last chunk also holds the final norm, the 151936-wide output layer and the argmax, so only token ids and hidden states leave the ANE.
 - Weights are 4-bit lookup tables: 16 values per group of 32 output rows. Chunks are 880 MB each, 1.2 GB for the last.
-- Each chunk has one function per (context length, verify width) pair. Widths are 8, 16, 32 and 64. The first release ships context lengths up to 4096.
+- Each chunk has one function per (context rung, call width) pair: widths 8, 16, 32 and 64, rungs from 256 doubling up to the export's context (1024 or 4096). All rungs share one KV buffer laid out for the largest; a smaller rung binds a prefix view of it, and each call uses the smallest rung that holds it.
 - The attention mask and the positions are inputs. Chains, token trees and replays all run on the same functions without a new export.
 - The KV cache stays on the ANE. A write must start at a position that is a multiple of 4, so a call replays up to 3 earlier tokens. Last token, 7 guesses and up to 3 replays fit in width 16.
 - The four chunks are chained with Core AI `encode`, which the Swift timing tool measured at the same cost as `run`. No CPU round trip between chunks.
@@ -104,5 +104,5 @@ flowchart LR
 ## Limits today
 
 - Greedy decoding only, one request at a time.
-- The lab ran the full model at 1024 tokens of context and timed one chunk up to 8192. At 8192 a chunk costs 3.1x more than at 1024, for a reason not yet found.
+- Context: 1024 tokens with the default export, 4096 with `target --context 4096`. At 8192 a chunk costs 3.1x more than at 1024, for a reason not yet found.
 - macOS 27 only. Tested on M3 Pro only.
