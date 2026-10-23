@@ -59,7 +59,7 @@ final class Drafter {
         padded.replaceSubrange(0..<taps.count, with: taps)
         let positions = (0..<Self.tapRows).map { Int32(length + $0) } + (0..<Self.blockSize).map { Int32(length + rows + $0) }
         let inputs: [String: NDArray] = [
-            "taps": NDArray(scalars: padded, shape: [1, Self.tapRows, tapWidth]),
+            "taps": ndArray(padded, shape: [1, Self.tapRows, tapWidth], type: .float16),
             "prefix_ids": NDArray(scalars: [golden] + [Int32](repeating: 0, count: Self.maxPrefix - 1), shape: [1, Self.maxPrefix]),
             "position_ids": NDArray(scalars: positions, shape: [1, positions.count]),
             "offset": NDArray(scalars: [Int32(length)], shape: [1]),

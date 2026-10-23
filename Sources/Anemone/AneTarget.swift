@@ -113,9 +113,9 @@ final class AneTarget {
         let shared: [String: NDArray] = [
             "position_ids": NDArray(scalars: (plan.offset..<(plan.offset + width)).map { UInt16($0) }, shape: [1, width]),
             "in_step": NDArray(scalars: [Int32(plan.offset)], shape: [1]),
-            "causal_mask": NDArray(scalars: causalMask(context: rung, width: width, offset: plan.offset), shape: [1, rung, 1, width]),
+            "causal_mask": ndArray(causalMask(context: rung, width: width, offset: plan.offset), shape: [1, rung, 1, width], type: .float16),
         ]
-        var current = NDArray(scalars: embeddings.rows(plan.batch, width: width), shape: [1, width, 1, embeddings.hiddenSize])
+        var current = ndArray(embeddings.rows(plan.batch, width: width), shape: [1, width, 1, embeddings.hiddenSize], type: .float16)
         var taps: [(values: [Float16], width: Int)] = []
         for chunk in chunks {
             var inputs = shared

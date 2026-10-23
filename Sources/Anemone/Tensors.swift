@@ -74,3 +74,15 @@ func stateStrides(_ function: InferenceFunction, _ name: String) throws -> [Int]
     guard case .ndArray(let descriptor) = function.descriptor.stateDescriptor(of: name) else { throw AnemoneError.missingFunction("state \(name)") }
     return descriptor.preferredStrides
 }
+
+/// An NDArray holding `values` in row-major order, copied in one pass.
+func ndArray<T: BitwiseCopyable>(_ values: [T], shape: [Int], type: NDArray.ScalarType) -> NDArray {
+    var array = NDArray(shape: shape, scalarType: type)
+    values.withUnsafeBufferPointer { source in
+        guard let base = source.baseAddress else { return }
+        array.mutableView(as: T.self).withUnsafeMutablePointer { pointer, _, _ in
+            pointer.update(from: base, count: source.count)
+        }
+    }
+    return array
+}
