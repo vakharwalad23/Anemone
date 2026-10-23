@@ -3,9 +3,12 @@ from pathlib import Path
 
 import torch
 from coreai_models.export.compression import quantize_pytorch_model
-from coreai_models.export.macos import export_to_coreai
+import coreai_torch
+from coreai.authoring import AIProgram
+from coreai_models.export.externalize import EXTERNALIZE_SPECS
+from coreai_models.export.mlir_ops import register_custom_torch_lowering, remove_functionalization
 from coreai_models.export.presets import get_preset
-from coreai_models.primitives._ops import mutable_cache_update_and_fetch
+from coreai_models.primitives._ops import mutable_cache_update_and_fetch, mutable_slice_update
 from coreai_models.primitives.macos.mlp import MLP
 from coreai_models.primitives.macos.rms_norm import RMSNorm
 from coreai_models.primitives.macos.rope import RoPE
@@ -17,7 +20,10 @@ from torch import nn
 INPUTS = ("taps", "prefix_ids", "position_ids", "offset", "injected", "prefix")
 STATES = ("k_cache", "v_cache")
 OUTPUTS = ("tokens", "confidence", "verify_input")
+INJECT_INPUTS = ("taps", "position_ids", "offset")
 TAP_ROWS = 8
+# prefill injects the prompt's taps 64 rows per call, the target's widest prefill call
+INJECT_ROWS = 64
 VERIFY_WIDTH = 16
 # the ANE writes KV only at offsets that are multiples of 4, so up to 3 replayed tokens precede the golden one
 MAX_PREFIX = 4
@@ -30,6 +36,14 @@ def write_and_fetch(cache: torch.Tensor, layer: int, offset: torch.Tensor, updat
     stop = offset + update.shape[2]
     end = torch.cat([torch.tensor([layer + 1, 1, heads], dtype=torch.int32), stop, torch.tensor([head_dim], dtype=torch.int32)])
     return mutable_cache_update_and_fetch(x=cache, update=update, begin=begin, end=end, layer_idx=layer, seq_dim=-2, seq_len=None)
+
+
+def write(cache: torch.Tensor, layer: int, offset: torch.Tensor, update: torch.Tensor) -> None:
+    _, _, heads, _, head_dim = cache.shape
+    begin = torch.cat([torch.tensor([layer, 0, 0], dtype=torch.int32), offset, torch.tensor([0], dtype=torch.int32)])
+    stop = offset + update.shape[2]
+    end = torch.cat([torch.tensor([layer + 1, 1, heads], dtype=torch.int32), stop, torch.tensor([head_dim], dtype=torch.int32)])
+    mutable_slice_update(x=cache, update=update[None], begin=begin, end=end)
 
 
 class Attention(nn.Module):
@@ -49,6 +63,11 @@ class Attention(nn.Module):
 
     def _heads(self, x: torch.Tensor, n: int) -> torch.Tensor:
         return x.reshape(1, x.shape[1], n, self.head_dim).permute(0, 2, 1, 3)
+
+    def write_context(self, features: torch.Tensor, positions: torch.Tensor, caches: Caches, offset: torch.Tensor) -> None:
+        key = self.rope(self.k_norm(self._heads(self.k_proj(features), self.n_kv_heads)), position_ids=positions)
+        write(caches[0], self.layer, offset, key)
+        write(caches[1], self.layer, offset, self._heads(self.v_proj(features), self.n_kv_heads))
 
     def forward(
         self, block: torch.Tensor, features: torch.Tensor, positions: torch.Tensor, caches: Caches, offset: torch.Tensor, mask: torch.Tensor
@@ -97,6 +116,7 @@ class DSparkStep(nn.Module):
         self.markov_w2 = nn.Linear(rank, vocab, bias=False)
         self.confidence = nn.Linear(dim + rank, 1, bias=True)
         self.register_buffer("mask_ids", torch.full((1, cfg["block_size"] - 1), cfg["mask_token_id"], dtype=torch.int32), persistent=False)
+        self.inject_mode = False
 
     @classmethod
     def load(cls, directory: Path) -> "DSparkStep":
@@ -108,14 +128,19 @@ class DSparkStep(nn.Module):
     def forward(
         self,
         taps: torch.Tensor,
-        prefix_ids: torch.Tensor,
-        position_ids: torch.Tensor,
-        offset: torch.Tensor,
-        injected: torch.Tensor,
-        prefix: torch.Tensor,
-        k_cache: torch.Tensor,
-        v_cache: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        prefix_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        offset: torch.Tensor | None = None,
+        injected: torch.Tensor | None = None,
+        prefix: torch.Tensor | None = None,
+        k_cache: torch.Tensor | None = None,
+        v_cache: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, ...]:
+        if self.inject_mode:
+            features = self.hidden_norm(self.fc(taps))
+            for layer in self.layers:
+                layer.self_attn.write_context(features, position_ids, (k_cache, v_cache), offset)
+            return ()
         golden = prefix_ids[0][prefix - 1]
         hidden = self.embed_tokens(torch.cat([golden[None], self.mask_ids], dim=1))
         features = self.hidden_norm(self.fc(taps))
@@ -177,14 +202,57 @@ def reference_inputs(cfg: dict, context: int) -> dict[str, torch.Tensor]:
     }
 
 
+def inject_inputs(cfg: dict, context: int) -> dict[str, torch.Tensor]:
+    main = reference_inputs(cfg, context)
+    return {
+        "taps": torch.randn(1, INJECT_ROWS, main["taps"].shape[2], dtype=torch.float16),
+        "position_ids": torch.arange(INJECT_ROWS, dtype=torch.int32)[None],
+        "offset": main["offset"],
+        "k_cache": main["k_cache"],
+        "v_cache": main["v_cache"],
+    }
+
+
+def traced(inputs: dict[str, torch.Tensor], inject: bool):
+    def export(module: nn.Module, pass_inputs_as_kwargs: bool = True) -> torch.export.ExportedProgram:
+        # the converter re-traces during externalization, so the mode is set on every call
+        module.inject_mode = inject
+        with torch.no_grad():
+            program = torch.export.export(module, args=(), kwargs=inputs)
+        program = program.run_decompositions(coreai_torch.get_decomp_table())
+        remove_functionalization(program)
+        return program
+
+    return export
+
+
+def to_program(model: DSparkStep, context: int) -> AIProgram:
+    """Two entry points over one set of weights: `main` drafts a block, `inject` only writes prompt taps into the cache."""
+    converter = coreai_torch.TorchConverter(mode=coreai_torch.TorchConverter.Mode.RELEASE)
+    entries = (
+        ("main", reference_inputs(model.cfg, context), False, INPUTS, OUTPUTS),
+        ("inject", inject_inputs(model.cfg, context), True, INJECT_INPUTS, ()),
+    )
+    for name, inputs, inject, input_names, output_names in entries:
+        converter.add_pytorch_module(
+            model, export_fn=traced(inputs, inject), externalize_modules=EXTERNALIZE_SPECS, input_names=input_names,
+            output_names=output_names, state_names=STATES, entrypoint_name=name,
+        )
+    register_custom_torch_lowering(converter)
+    program = converter.to_coreai()
+    model.inject_mode = False
+    return program
+
+
 def export_drafter(drafter_id: str, context: int, path: Path) -> None:
     """Export the DSpark drafter as a static-shape int4 Core AI program for the GPU, with KV room for `context` tokens."""
     model = DSparkStep.load(Path(snapshot_download(drafter_id, allow_patterns=["*.json", "*.safetensors"]))).to(torch.float16)
-    # the cache also holds one window of tap rows and the block past the target's last position
-    inputs = reference_inputs(model.cfg, context + TAP_ROWS + model.cfg["block_size"] + 1)
+    # the cache also holds one inject window of tap rows past the target's last position
+    slots = context + INJECT_ROWS
+    inputs = reference_inputs(model.cfg, slots)
     config = dict(get_preset("4bit")["torch_quantization_config"])
     states = tuple(range(len(INPUTS), len(inputs)))
-    model = quantize_pytorch_model(model, tuple(inputs.values()), None, config, cache_seq_len=inputs["k_cache"].shape[3], state_indices=states)
-    program = export_to_coreai(model, inputs, None, input_names=INPUTS, output_names=OUTPUTS, state_names=STATES)
+    model = quantize_pytorch_model(model, tuple(inputs.values()), None, config, cache_seq_len=slots, state_indices=states)
+    program = to_program(model, slots)
     path.parent.mkdir(parents=True, exist_ok=True)
     program.save_asset(path, None)
