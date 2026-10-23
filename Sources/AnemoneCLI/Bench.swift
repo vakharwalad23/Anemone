@@ -16,15 +16,20 @@ struct Bench: AsyncParsableCommand {
         ("translate", "Translate into French: The weather is lovely today, so we are going to walk along the river after lunch."),
     ]
 
+    enum Mode: String, ExpressibleByArgument {
+        case plain, speculative
+    }
+
     struct Row: Codable {
         let prompt: String
-        let plain: GenerationStats
-        let speculative: GenerationStats
-        let lossless: Bool
+        let plain: GenerationStats?
+        let speculative: GenerationStats?
+        let lossless: Bool?
     }
 
     @OptionGroup var model: ModelOptions
     @Option(help: "Tokens per reply.") var maxTokens = 256
+    @Option(help: "Run only one mode (no lossless check).") var only: Mode?
     @Option(help: "Write the results as JSON to this file.") var json: String?
 
     func run() async throws {
@@ -32,26 +37,44 @@ struct Bench: AsyncParsableCommand {
         var rows: [Row] = []
         for (name, text) in Self.prompts {
             let messages = [ChatMessage(.user, text)]
-            let plain = try await languageModel.respond(to: messages, options: GenerationOptions(maxTokens: maxTokens, speculative: false))
-            let drafted = try await languageModel.respond(to: messages, options: GenerationOptions(maxTokens: maxTokens))
-            let lossless = drafted.tokens == Array(plain.tokens.prefix(drafted.tokens.count))
-            rows.append(Row(prompt: name, plain: plain.stats, speculative: drafted.stats, lossless: lossless))
-            let cycles = Double(max(drafted.stats.cycles, 1))
-            print(
-                name.padding(toLength: 10, withPad: " ", startingAt: 0)
-                    + String(
-                        format: "plain %5.1f tok/s   speculative %5.1f tok/s   accepted %.2f   draft %4.1f ms   verify %4.1f ms   lossless %@",
-                        plain.stats.tokensPerSecond, drafted.stats.tokensPerSecond, drafted.stats.acceptedPerCycle,
-                        drafted.stats.draftSeconds * 1000 / cycles, drafted.stats.verifySeconds * 1000 / cycles, lossless ? "yes" : "NO"))
+            let plainOptions = GenerationOptions(maxTokens: maxTokens, speculative: false)
+            let plain = only == .speculative ? nil : try await languageModel.respond(to: messages, options: plainOptions)
+            let drafted = only == .plain ? nil : try await languageModel.respond(to: messages, options: GenerationOptions(maxTokens: maxTokens))
+            let lossless = plain.flatMap { plain in drafted.map { $0.tokens == Array(plain.tokens.prefix($0.tokens.count)) } }
+            rows.append(Row(prompt: name, plain: plain?.stats, speculative: drafted?.stats, lossless: lossless))
+            print(name.padding(toLength: 10, withPad: " ", startingAt: 0) + line(plain: plain?.stats, speculative: drafted?.stats, lossless: lossless))
         }
-        let mean = { (values: [Double]) in values.reduce(0, +) / Double(values.count) }
-        print("mean      " + String(format: "plain %5.1f tok/s   speculative %5.1f tok/s   accepted %.2f   lossless %d/%d",
-                     mean(rows.map(\.plain.tokensPerSecond)), mean(rows.map(\.speculative.tokensPerSecond)),
-                     mean(rows.map(\.speculative.acceptedPerCycle)), rows.filter(\.lossless).count, rows.count))
+        print("mean      " + summary(rows))
         if let json {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(rows).write(to: URL(fileURLWithPath: json))
         }
+    }
+
+    func line(plain: GenerationStats?, speculative: GenerationStats?, lossless: Bool?) -> String {
+        var text = ""
+        if let plain { text += String(format: "plain %5.1f tok/s   ", plain.tokensPerSecond) }
+        if let speculative {
+            let cycles = Double(max(speculative.cycles, 1))
+            text += String(
+                format: "speculative %5.1f tok/s   accepted %.2f   draft %4.1f ms   verify %4.1f ms   ", speculative.tokensPerSecond,
+                speculative.acceptedPerCycle, speculative.draftSeconds * 1000 / cycles, speculative.verifySeconds * 1000 / cycles)
+        }
+        if let lossless { text += "lossless \(lossless ? "yes" : "NO")" }
+        return text
+    }
+
+    func summary(_ rows: [Row]) -> String {
+        let mean = { (values: [Double]) in values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count) }
+        var text = ""
+        if only != .speculative { text += String(format: "plain %5.1f tok/s   ", mean(rows.compactMap(\.plain?.tokensPerSecond))) }
+        if only != .plain {
+            text += String(
+                format: "speculative %5.1f tok/s   accepted %.2f   ", mean(rows.compactMap(\.speculative?.tokensPerSecond)),
+                mean(rows.compactMap(\.speculative?.acceptedPerCycle)))
+        }
+        if only == nil { text += "lossless \(rows.filter { $0.lossless == true }.count)/\(rows.count)" }
+        return text
     }
 }
