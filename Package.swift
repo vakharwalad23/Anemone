@@ -1,0 +1,33 @@
+// swift-tools-version: 6.0
+import PackageDescription
+
+let settings: [SwiftSetting] = [
+    .enableExperimentalFeature("Lifetimes"),
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+]
+
+let package = Package(
+    name: "Anemone",
+    platforms: [.macOS("27.0")],
+    products: [
+        .library(name: "Anemone", targets: ["Anemone"]),
+        .executable(name: "anemone", targets: ["AnemoneCLI"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.2.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser", exact: "1.7.0"),
+    ],
+    targets: [
+        .target(
+            name: "Anemone",
+            dependencies: [.product(name: "Tokenizers", package: "swift-transformers")],
+            swiftSettings: settings
+        ),
+        .executableTarget(
+            name: "AnemoneCLI",
+            dependencies: ["Anemone", .product(name: "ArgumentParser", package: "swift-argument-parser")],
+            swiftSettings: settings
+        ),
+        .testTarget(name: "AnemoneTests", dependencies: ["Anemone"], swiftSettings: settings),
+    ]
+)
