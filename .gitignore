@@ -1,0 +1,21 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcodeproj/
+.venv/
+__pycache__/
+*.aimodel
+*.mlpackage
+*.mlmodelc
+*.safetensors
+*.gguf
+*.npz
+models/
+results/
+# agent instructions and plans live outside this repo
+CLAUDE.md
+AGENTS.md
+.claude/
+.cursor/
