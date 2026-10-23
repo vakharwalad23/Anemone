@@ -44,7 +44,7 @@ final class Speculator {
             // the prompt goes into the drafter during prefill; its last 1 to 8 rows ride along with the first draft
             let split = prompt.count - (prompt.count - 1) % Drafter.tapRows - 1
             if split > 0 {
-                _ = try await drafter.step(taps: Array(pending[..<(split * drafter.tapWidth)]), golden: golden)
+                try await drafter.inject(taps: Array(pending[..<(split * drafter.tapWidth)]))
             }
             pending = Array(pending[(split * drafter.tapWidth)...])
         }

@@ -11,18 +11,21 @@ final class Drafter {
     static let tapRows = 8
     static let blockSize = 7
     static let maxPrefix = 4
+    static let injectRows = 64
 
     let tapWidth: Int
     private let function: InferenceFunction
+    private let injectFunction: InferenceFunction?
     private var keys: NDArray
     private var values: NDArray
     private var length = 0
 
-    private init(function: InferenceFunction) throws {
+    private init(function: InferenceFunction, inject: InferenceFunction?) throws {
         guard case .ndArray(let taps) = function.descriptor.inputDescriptor(of: "taps"), let width = taps.shape.last else {
             throw AnemoneError.missingFunction("drafter input taps")
         }
         self.function = function
+        injectFunction = inject
         tapWidth = width
         keys = try state(function, "k_cache")
         values = try state(function, "v_cache")
@@ -31,7 +34,9 @@ final class Drafter {
     static func load(_ url: URL) async throws -> Drafter {
         let model = try await AIModel(contentsOf: url, options: SpecializationOptions(preferredComputeUnitKind: .gpu))
         guard let function = try model.loadFunction(named: "main") else { throw AnemoneError.missingFunction("main") }
-        let drafter = try Drafter(function: function)
+        // folders converted before the inject entry point existed still work, injecting 8 rows at a time
+        let drafter = try Drafter(function: function, inject: try model.loadFunction(named: "inject"))
+        try await drafter.inject(taps: [Float16](repeating: 0, count: drafter.tapWidth))
         _ = try await drafter.step(taps: [Float16](repeating: 0, count: drafter.tapWidth), golden: 0)
         drafter.reset()
         return drafter
@@ -39,6 +44,27 @@ final class Drafter {
 
     func reset() {
         length = 0
+    }
+
+    /// Adds prompt taps (rows of `tapWidth`) to the drafter's context without drafting.
+    func inject(taps: [Float16]) async throws {
+        guard let injectFunction else {
+            _ = try await step(taps: taps, golden: 0)
+            return
+        }
+        let rows = taps.count / tapWidth
+        for start in stride(from: 0, to: rows, by: Self.injectRows) {
+            let count = min(Self.injectRows, rows - start)
+            var padded = [Float16](repeating: 0, count: Self.injectRows * tapWidth)
+            padded.replaceSubrange(0..<(count * tapWidth), with: taps[(start * tapWidth)..<((start + count) * tapWidth)])
+            let inputs: [String: NDArray] = [
+                "taps": ndArray(padded, shape: [1, Self.injectRows, tapWidth], type: .float16),
+                "position_ids": NDArray(scalars: (0..<Self.injectRows).map { Int32(length + $0) }, shape: [1, Self.injectRows]),
+                "offset": NDArray(scalars: [Int32(length)], shape: [1]),
+            ]
+            _ = try await Anemone.run(injectFunction, inputs: inputs, keys: &keys, values: &values, names: ("k_cache", "v_cache"))
+            length += count
+        }
     }
 
     /// Adds the taps of the tokens the target just accepted (rows of `tapWidth`), then drafts the block after `golden`.
