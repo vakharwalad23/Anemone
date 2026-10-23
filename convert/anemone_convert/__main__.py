@@ -18,13 +18,13 @@ def main() -> None:
 
     target = sub.add_parser("target", help="export a palettized checkpoint as ANE chunk programs (needs --extra export)")
     target.add_argument("--checkpoint", type=Path, required=True, help="palettized checkpoint folder with palettization.json")
-    target.add_argument("--context", type=int, default=1024, help="largest context rung; rungs double from 256")
+    target.add_argument("--context", type=int, default=4096, help="largest context rung; rungs double from 256")
     target.add_argument("--drafter", default=DRAFTER, help="drafter whose target_layer_ids set the taps")
     target.add_argument("--out", type=Path, required=True)
 
     drafter = sub.add_parser("drafter", help="export the DSpark drafter as a GPU program (needs --extra export)")
     drafter.add_argument("--drafter", default=DRAFTER)
-    drafter.add_argument("--context", type=int, default=1024, help="target context the drafter must keep up with")
+    drafter.add_argument("--context", type=int, default=4096, help="target context the drafter must keep up with")
     drafter.add_argument("--out", type=Path, required=True, help="path of the .aimodel to write")
 
     pack = sub.add_parser("package", help="assemble a model folder from exported chunks and a drafter")
