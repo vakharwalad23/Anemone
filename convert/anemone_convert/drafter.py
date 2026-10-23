@@ -24,6 +24,8 @@ INJECT_INPUTS = ("taps", "position_ids", "offset")
 TAP_ROWS = 8
 # prefill injects the prompt's taps 64 rows per call, the target's widest prefill call
 INJECT_ROWS = 64
+# attending over a 4096-token cache costs 3 ms per draft even when the chat is short
+SMALL_CONTEXT = 1024
 VERIFY_WIDTH = 16
 # the ANE writes KV only at offsets that are multiples of 4, so up to 3 replayed tokens precede the golden one
 MAX_PREFIX = 4
@@ -226,13 +228,17 @@ def traced(inputs: dict[str, torch.Tensor], inject: bool):
     return export
 
 
-def to_program(model: DSparkStep, context: int) -> AIProgram:
-    """Two entry points over one set of weights: `main` drafts a block, `inject` only writes prompt taps into the cache."""
+def to_program(model: DSparkStep, slots: list[int]) -> AIProgram:
+    """Per cache size, two entry points over one set of weights: `main_<slots>` drafts a block, `inject_<slots>` only writes prompt taps."""
     converter = coreai_torch.TorchConverter(mode=coreai_torch.TorchConverter.Mode.RELEASE)
-    entries = (
-        ("main", reference_inputs(model.cfg, context), False, INPUTS, OUTPUTS),
-        ("inject", inject_inputs(model.cfg, context), True, INJECT_INPUTS, ()),
-    )
+    entries = [
+        entry
+        for size in slots
+        for entry in (
+            (f"main_{size}", reference_inputs(model.cfg, size), False, INPUTS, OUTPUTS),
+            (f"inject_{size}", inject_inputs(model.cfg, size), True, INJECT_INPUTS, ()),
+        )
+    ]
     for name, inputs, inject, input_names, output_names in entries:
         converter.add_pytorch_module(
             model, export_fn=traced(inputs, inject), externalize_modules=EXTERNALIZE_SPECS, input_names=input_names,
@@ -245,14 +251,15 @@ def to_program(model: DSparkStep, context: int) -> AIProgram:
 
 
 def export_drafter(drafter_id: str, context: int, path: Path) -> None:
-    """Export the DSpark drafter as a static-shape int4 Core AI program for the GPU, with KV room for `context` tokens."""
+    """Export the DSpark drafter as a static-shape int4 Core AI program for the GPU, with KV room for up to `context` tokens."""
     model = DSparkStep.load(Path(snapshot_download(drafter_id, allow_patterns=["*.json", "*.safetensors"]))).to(torch.float16)
-    # the cache also holds one inject window of tap rows past the target's last position
-    slots = context + INJECT_ROWS
-    inputs = reference_inputs(model.cfg, slots)
+    # each cache also holds one inject window of tap rows past the target's last position; short chats use the small one
+    sizes = sorted({min(context, SMALL_CONTEXT), context})
+    slots = [size + INJECT_ROWS for size in sizes]
+    inputs = reference_inputs(model.cfg, slots[-1])
     config = dict(get_preset("4bit")["torch_quantization_config"])
     states = tuple(range(len(INPUTS), len(inputs)))
-    model = quantize_pytorch_model(model, tuple(inputs.values()), None, config, cache_seq_len=slots, state_indices=states)
+    model = quantize_pytorch_model(model, tuple(inputs.values()), None, config, cache_seq_len=slots[-1], state_indices=states)
     program = to_program(model, slots)
     path.parent.mkdir(parents=True, exist_ok=True)
     program.save_asset(path, None)
