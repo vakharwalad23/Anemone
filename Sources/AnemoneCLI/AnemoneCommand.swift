@@ -1,6 +1,7 @@
 import Anemone
 import ArgumentParser
 import Foundation
+import Synchronization
 
 @main
 struct AnemoneCommand: AsyncParsableCommand {
@@ -12,15 +13,33 @@ struct AnemoneCommand: AsyncParsableCommand {
 }
 
 struct ModelOptions: ParsableArguments {
-    @Option(name: .shortAndLong, help: "Model folder made by the converter (default: $ANEMONE_MODEL).")
+    @Option(name: .shortAndLong, help: "Model folder made by the converter, or a Hugging Face repo id to download (default: $ANEMONE_MODEL).")
     var model: String = ProcessInfo.processInfo.environment["ANEMONE_MODEL"] ?? "models/qwen3-8b"
 
     func load() async throws -> LanguageModel {
+        let folder = try await resolve()
         log("Loading \(model). The first load on a Mac compiles it for the Neural Engine, about 7 minutes; later loads are quick.")
         let start = ContinuousClock.now
-        let languageModel = try await LanguageModel.load(from: URL(fileURLWithPath: model))
+        let languageModel = try await LanguageModel.load(from: folder)
         log("Loaded in \((ContinuousClock.now - start).formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 1)))).")
         return languageModel
+    }
+
+    /// A local folder as given, or a repo id downloaded once into the cache.
+    func resolve() async throws -> URL {
+        let local = URL(fileURLWithPath: model)
+        if FileManager.default.fileExists(atPath: local.path) || model.split(separator: "/").count != 2 { return local }
+        log("Downloading \(model) from Hugging Face (about 5 GB the first time).")
+        let reported = Mutex(-5)
+        return try await ModelFolder.download(model) { fraction in
+            let percent = Int(fraction * 100)
+            let due = reported.withLock { last in
+                guard percent >= last + 5 else { return false }
+                last = percent
+                return true
+            }
+            if due { log("\(percent)%") }
+        }
     }
 }
 
