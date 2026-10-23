@@ -39,7 +39,13 @@ def main() -> None:
         from anemone_convert.quantize import chat_replies, documents, quantize
 
         source = checkpoint(args.model)
-        chat = json.loads(args.chat_calibration.read_text()) if args.chat_calibration else chat_replies(args.chat_model, source)
+        saved = args.chat_calibration or args.out / "calibration-chat.json"
+        if saved.exists():
+            chat = json.loads(saved.read_text())
+        else:
+            chat = chat_replies(args.chat_model, source)
+            args.out.mkdir(parents=True, exist_ok=True)
+            saved.write_text(json.dumps(chat))
         quantize(source, documents(source) | chat, args.out, args.device)
         print(f"wrote {args.out}")
     elif args.command == "target":

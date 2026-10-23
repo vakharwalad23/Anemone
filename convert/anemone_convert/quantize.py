@@ -51,6 +51,7 @@ def documents(checkpoint: Path) -> dict[str, list[int]]:
 
 def chat_replies(chat_model: str, checkpoint: Path) -> dict[str, list[int]]:
     """The model's own no-think answers to unrelated prompts; GPTQ fits chat only when it calibrates on chat (lab e07)."""
+    import mlx.core as mx
     from mlx_lm import load, stream_generate
 
     model, _ = load(chat_model)
@@ -60,6 +61,9 @@ def chat_replies(chat_model: str, checkpoint: Path) -> dict[str, list[int]]:
         messages = [{"role": "user", "content": prompt}]
         ids = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_dict=False, enable_thinking=False)
         replies[f"chat{index}"] = ids + [r.token for r in stream_generate(model, tokenizer, ids, max_tokens=CHAT_REPLY_TOKENS)]
+    # the MLX copy of the model must leave memory before the bf16 layers stream through
+    del model
+    mx.clear_cache()
     return replies
 
 
