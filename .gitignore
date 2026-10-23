@@ -14,6 +14,7 @@ __pycache__/
 *.npz
 models/
 results/
+work/
 # agent instructions and plans live outside this repo
 CLAUDE.md
 AGENTS.md
