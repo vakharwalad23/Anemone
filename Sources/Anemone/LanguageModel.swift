@@ -17,6 +17,8 @@ public struct Response: Sendable {
     public let text: String
     public let tokens: [Int32]
     public let stats: GenerationStats
+    /// True when the reply stopped at the token limit rather than at end of text.
+    public let hitTokenLimit: Bool
 }
 
 public enum GenerationEvent: Sendable {
@@ -29,6 +31,8 @@ public actor LanguageModel {
     public let folder: ModelFolder
     private let speculator: Speculator
     private let tokenizer: ChatTokenizer
+    private var busy = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
 
     private init(folder: ModelFolder, speculator: Speculator, tokenizer: ChatTokenizer) {
         self.folder = folder
@@ -49,13 +53,33 @@ public actor LanguageModel {
     public func respond(
         to messages: [ChatMessage], options: GenerationOptions = GenerationOptions(), onText: (String) -> Void = { _ in }
     ) async throws -> Response {
+        // the target and drafter hold one conversation's KV cache, so requests must not interleave across awaits
+        await acquire()
+        defer { release() }
         let prompt = try tokenizer.encode(messages, thinking: options.thinking)
         var stream = StreamingText()
         let stats = try await speculator.generate(prompt, maxTokens: options.maxTokens, speculative: options.speculative) { tokens in
             let piece = stream.append(tokens, decode: tokenizer.decode)
             if !piece.isEmpty { onText(piece) }
         }
-        return Response(text: tokenizer.decode(stream.tokens), tokens: stream.tokens, stats: stats)
+        let ended = stream.tokens.last.map(speculator.eos.contains) ?? false
+        return Response(text: tokenizer.decode(stream.tokens), tokens: stream.tokens, stats: stats, hitTokenLimit: !ended)
+    }
+
+    private func acquire() async {
+        guard busy else {
+            busy = true
+            return
+        }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    private func release() {
+        if waiting.isEmpty {
+            busy = false
+        } else {
+            waiting.removeFirst().resume()
+        }
     }
 
     public nonisolated func generate(
