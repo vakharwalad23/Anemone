@@ -1,6 +1,6 @@
 # Benchmarks
 
-Every number Anemone quotes, with how it was measured. All come from the Python lab prototype and two Swift timing tools, run on 2026-10-23. The Swift engine is not built yet.
+Every number Anemone quotes, with how it was measured, all from 2026-10-23. The first section is the Swift engine; the later sections come from the Python lab prototype and two Swift timing tools, which the engine was built from.
 
 ## Setup
 
@@ -13,7 +13,40 @@ Every number Anemone quotes, with how it was measured. All come from the Python 
 
 Numbers from different macOS versions are not comparable; rerun both sides on the same Mac.
 
-## Speed
+## Swift engine (`anemone bench`)
+
+Release build, model folder from the converter (GPTQ LUT4 chunks, Core AI drafter), 2026-10-23 evening, AC power.
+
+| prompt | plain tok/s | speculative tok/s | accepted per cycle | draft ms | verify ms | lossless |
+|---|---|---|---|---|---|---|
+| math | 16.2 | 77.3 | 5.50 | 20.1 | 62.2 | yes |
+| code | 16.3 | 66.9 | 4.54 | 20.5 | 62.2 | yes |
+| explain | 16.3 | 42.7 | 2.62 | 21.6 | 62.4 | yes |
+| summary | 16.3 | 32.5 | 1.75 | 20.6 | 62.0 | yes |
+| advice | 16.3 | 35.2 | 1.93 | 20.9 | 62.3 | yes |
+| translate | 16.3 | 18.6 | 0.65 | 19.8 | 62.5 | yes |
+| **mean** | **16.3** | **45.5** | **2.83** | **20.6** | **62.3** | **6/6** |
+
+- Acceptance per prompt is identical to the Python lab loop with the same drafter (e12), so the engine reproduces the lab token for token.
+- Host time outside the draft and verify calls is about 0.1 ms per cycle. Building input arrays with `NDArray(scalars:)` copied element by element and cost 7 ms per draft; copying them in one pass took the mean from 40.7 to 45.5 tokens/s.
+- Each call uses the smallest context rung that fits (256, 512 or 1024), which is why plain decoding (61.3 ms per token) beats the lab's 65.8 ms.
+- First load of a model folder: 452 s (ANE compilation, cached per executable). Later loads: 3.9 to 4.3 s.
+
+### Energy, same night
+
+Whole-system SMC power over the generation window including prefill, after 10 s of idle, two rounds each. Anemone from `e13_swift_energy.py`, MLX from `e08_energy.py`.
+
+| engine | tok/s incl. prefill | system W | GPU W | J/token above idle | J/token total |
+|---|---|---|---|---|---|
+| **Anemone, speculative** | **43.7 / 43.9** | **19.2 / 19.7** | **1.0 / 1.1** | **0.397 / 0.420** | **0.471 / 0.480** |
+| Anemone, plain | 16.5 / 16.4 | 15.3 / 15.5 | 0.0 / 0.0 | 0.801 / 0.749 | 0.958 / 0.970 |
+| MLX + DSpark | 32.4 / 32.4 | 40.3 / 40.3 | 19.9 / 20.0 | 1.221 / 1.232 | 1.311 / 1.309 |
+| MLX plain | 28.9 / 29.2 | 31.6 / 31.8 | 10.4 / 10.7 | 1.042 / 1.052 | 1.144 / 1.139 |
+
+- 2.4x less energy per token than MLX plain and 2.7x less than MLX with the same drafter, at about half the wall power of MLX + DSpark.
+- The Core AI drafter draws about 1 W on the GPU; the MLX drafter in the lab prototype drew 3.5 W.
+
+## Speed (Python lab prototype)
 
 Decode tokens/s per prompt. In brackets: mean guesses accepted per cycle.
 
@@ -32,7 +65,7 @@ Decode tokens/s per prompt. In brackets: mean guesses accepted per cycle.
 - ANE speculative output was identical to plain ANE greedy output on all runs. MLX with DSpark differs from plain MLX on 3 of 6 prompts because its numerics depend on the batch width.
 - Acceptance differs between weight sets because each produces slightly different greedy text.
 
-## Energy
+## Energy (Python lab prototype)
 
 Whole-system power from the SMC `PSTR` sensor and GPU power from IOReport, read without root. Each engine runs all 6 prompts in one window plus a 2 s tail, after a 10 s settle and 10 s of idle. Two rounds, interleaved; both values shown.
 
