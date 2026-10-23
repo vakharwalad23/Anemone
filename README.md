@@ -55,6 +55,14 @@ Make a model folder with the converter (see [Converting a model](docs/convert.md
 .build/release/anemone bench --model models/qwen3-8b
 ```
 
+Or serve an OpenAI-compatible API and point any OpenAI client at `http://127.0.0.1:8080/v1`:
+
+```sh
+.build/release/anemone serve --model models/qwen3-8b --port 8080
+curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "Write a haiku about the sea."}], "stream": true}'
+```
+
 The first load on a Mac compiles the model for the ANE and takes about 7.5 minutes. macOS caches the result per app, so later loads take about 4 seconds.
 
 ## Use it from Swift
@@ -115,10 +123,10 @@ See [Converting a model](docs/convert.md) for what each step does, how long it t
 
 ## Status and roadmap
 
-Working today: Qwen3-8B with thinking off, greedy decoding, up to 1024 tokens of context (4096 with the 4k export), one request at a time, `run`, `chat` and `bench`.
+Working today: Qwen3-8B with thinking off, greedy decoding, up to 1024 tokens of context (4096 with the 4k export), one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
 
 1. Done: drafter runtime picked by measurement, Swift engine and CLI, converter.
-2. Next: an OpenAI-compatible `anemone serve`, prebuilt models on Hugging Face, 4096-token context by default.
+2. Next: prebuilt models on Hugging Face, 4096-token context by default.
 3. Faster: hide the draft behind the ANE check, token trees with confidence scheduling, mixed 3/4/6-bit weights.
 4. 8192-token context. Today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found.
 5. More models: DeepSeek-R1-0528-Qwen3-8B, other Qwen3 sizes, then other families with DSpark-style drafters.
