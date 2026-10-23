@@ -104,5 +104,5 @@ flowchart LR
 ## Limits today
 
 - Greedy decoding only, one request at a time.
-- Context: 1024 tokens with the default export, 4096 with `target --context 4096`. At 8192 a chunk costs 3.1x more than at 1024, for a reason not yet found.
+- Context: up to 4096 tokens (the default export). At 8192 a chunk costs 3.1x more than at 1024, for a reason not yet found.
 - macOS 27 only. Tested on M3 Pro only.

@@ -49,12 +49,12 @@ curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/jso
 .product(name: "Anemone", package: "Anemone"),
 ```
 
-Prebuilt model folders are not on Hugging Face yet; `ModelFolder.download` works for any repo that holds one, and a local folder works the same without it.
+`ModelFolder.download` fetches any Hugging Face repo that holds a model folder (once, into `~/.cache/anemone`); a local folder works the same without it.
 
 ```swift
 import Anemone
 
-let folder = try await ModelFolder.download("org/qwen3-8b-anemone")
+let folder = try await ModelFolder.download("vakharwalad23/Qwen3-8B-Anemone")
 let model = try await LanguageModel.load(from: folder)
 
 let reply = try await model.respond(to: [ChatMessage(.user, "Write a haiku about the sea.")]) { piece in

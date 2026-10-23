@@ -37,6 +37,8 @@ The 4-bit weights are also closer to the original model than MLX 4-bit (KL again
 | MLX 4-bit affine, group 64 | 0.085 | 0.086 | 0.870 | 0.902 |
 | Core AI default palettizer | 0.341 | 0.371 | 0.767 | 0.825 |
 
+The docs set (four files from one code repo) shares a domain with the text these weights were calibrated on, so its 0.047 is optimistic. With the converter's default calibration (Python standard library plus the model's own chat answers) the same method scores 0.107 on docs and 0.080 on chat: better than MLX on chat, worse on code and docs. Choosing calibration text is an open experiment.
+
 ## Quick start
 
 Requirements: an Apple Silicon Mac with macOS 27 and Xcode 27. Tested on M3 Pro (18 GB).
@@ -45,25 +47,26 @@ Requirements: an Apple Silicon Mac with macOS 27 and Xcode 27. Tested on M3 Pro 
 git clone https://github.com/vakharwalad23/Anemone.git
 cd Anemone
 swift build -c release
+export ANEMONE_MODEL=vakharwalad23/Qwen3-8B-Anemone
+.build/release/anemone run "Explain how a CPU cache works."
 ```
 
-Make a model folder with the converter (see [Converting a model](docs/convert.md)); prebuilt folders on Hugging Face are coming. Then:
+The first run downloads the model folder from [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone) (6 GB) and compiles it for the ANE, about 12 minutes on an M3 Pro. macOS caches the result per app, so later runs start in a few seconds.
 
 ```sh
-.build/release/anemone run --model models/qwen3-8b "Explain how a CPU cache works."
-.build/release/anemone chat --model models/qwen3-8b
-.build/release/anemone bench --model models/qwen3-8b
+.build/release/anemone chat
+.build/release/anemone bench
 ```
 
 Or serve an OpenAI-compatible API and point any OpenAI client at `http://127.0.0.1:8080/v1`:
 
 ```sh
-.build/release/anemone serve --model models/qwen3-8b --port 8080
+.build/release/anemone serve --port 8080
 curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
   -d '{"messages": [{"role": "user", "content": "Write a haiku about the sea."}], "stream": true}'
 ```
 
-The first load on a Mac compiles the model for the ANE and takes about 7.5 minutes. macOS caches the result per app, so later loads take about 4 seconds.
+To build a model folder yourself, see [Converting a model](docs/convert.md); `--model` also takes a local folder.
 
 ## Use it from Swift
 
@@ -75,7 +78,7 @@ The first load on a Mac compiles the model for the ANE and takes about 7.5 minut
 ```swift
 import Anemone
 
-let model = try await LanguageModel.load(from: URL(fileURLWithPath: "models/qwen3-8b"))
+let model = try await LanguageModel.load(from: ModelFolder.download("vakharwalad23/Qwen3-8B-Anemone"))
 for try await event in model.generate([ChatMessage(.user, "Write a haiku about the sea.")]) {
     switch event {
     case .text(let piece): print(piece, terminator: "")
@@ -123,10 +126,10 @@ See [Converting a model](docs/convert.md) for what each step does, how long it t
 
 ## Status and roadmap
 
-Working today: Qwen3-8B with thinking off, greedy decoding, up to 1024 tokens of context (4096 with the 4k export), one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
+Working today: Qwen3-8B with thinking off, greedy decoding, up to 4096 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
 
-1. Done: drafter runtime picked by measurement, Swift engine and CLI, converter.
-2. Next: prebuilt models on Hugging Face, 4096-token context by default.
+1. Done: drafter runtime picked by measurement, Swift engine and CLI, converter, 4096-token context, OpenAI-compatible server.
+2. Next: more models (Qwen3-4B and Qwen3-14B have DSpark drafters), better calibration text.
 3. Faster: hide the draft behind the ANE check, token trees with confidence scheduling, mixed 3/4/6-bit weights.
 4. 8192-token context. Today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found.
 5. More models: DeepSeek-R1-0528-Qwen3-8B, other Qwen3 sizes, then other families with DSpark-style drafters.

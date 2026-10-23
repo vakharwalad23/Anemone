@@ -34,17 +34,19 @@ Release build, model folder from the converter (GPTQ LUT4 chunks, Core AI drafte
 
 ### Long context (4096 export)
 
-Same engine, model folder exported with `--context 4096` (rungs 256 to 4096) and a drafter with 4160 cache slots.
+Same engine, model folder exported with `--context 4096` (rungs 256 to 4096) and a drafter with two caches (1088 and 4160 slots).
 
 | run | prefill | decode tok/s | accepted per cycle |
 |---|---|---|---|
 | 2725-token prompt, plain | 4614 ms (591 tok/s) | 11.3 | - |
 | **2725-token prompt, speculative** | **4704 ms** | **30.5** | **2.53** |
-| 6 short prompts, speculative (mean) | - | 43.3 | 2.84 |
+| 984-token prompt, plain / speculative (crosses 1024 while decoding) | 1313 / 1376 ms | 14.2 / 35.1 | 2.36 |
+| 6 short prompts, speculative (mean) | - | 45.0 | 2.84 |
 
 - Output of the long prompt is identical with and without the drafter.
 - Before the drafter's `inject` entry point, speculative prefill took 10936 ms: the prompt reached the drafter 8 rows per call. With 64 rows per call (7.1 ms each) it adds about 90 ms.
-- On short prompts the 4096 folder verifies as fast as the 1024 folder (62.5 ms, smallest rung per call); drafting takes 24.7 ms instead of 21.4 because the drafter attends over all 4160 slots.
+- On short prompts the 4096 folder runs as fast as the 1024 folder: the verify uses the smallest rung per call (62.5 ms) and the drafter its 1088-slot cache (21.2 ms). With one 4160-slot cache the drafter took 24.7 ms and the mean was 43.3 tokens/s.
+- Every run above gives the same text with and without the drafter, including the 984-token prompt, whose drafter cache grows from 1088 to 4160 slots mid-reply.
 
 ### Energy, same night
 
@@ -110,12 +112,14 @@ Simulated in PyTorch before export (no ANE involved):
 | weights | docs KL | chat KL |
 |---|---|---|
 | Weighted k-means + GPTQ, plus chat calibration | 0.045 | 0.084 |
+| Weighted k-means + GPTQ, converter default calibration (standard library + chat) | 0.107 | 0.080 |
 | 6-bit lookup tables, plain k-means (1.5x the bytes) | 0.025 | 0.030 |
 | 3-bit lookup tables, weighted k-means + GPTQ (0.75x the bytes) | 0.202 | 0.391 |
 
 - The simulator matched the ANE within 0.004 KL on every export measured.
 - Chat calibration: 4.3k tokens of the model's own answers to 16 prompts unrelated to the test prompts.
-- Against MLX 4-bit, Anemone's weights are 1.8x lower on docs KL and tied on chat KL (0.0864 vs 0.0859, lower on 5 of 6 prompts), with higher top-1 on both.
+- Against MLX 4-bit, the lab weights are 1.8x lower on docs KL and tied on chat KL (0.0864 vs 0.0859, lower on 5 of 6 prompts), with higher top-1 on both.
+- Caveat: the lab calibrated on code and docs from the same repo as the four docs files, so the 0.047 docs KL is partly a domain match. The converter's default calibration (six Python standard library files plus the model's chat answers) scores 0.107 on docs (worse than MLX) and 0.080 on chat (better than MLX, top-1 0.922). GPTQ fits whatever it calibrates on; a broader calibration set is the next quality experiment.
 
 ## Verify cost on the ANE (Swift timing tool)
 
