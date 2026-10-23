@@ -21,7 +21,9 @@ let package = Package(
     targets: [
         .target(
             name: "Anemone",
-            dependencies: [.product(name: "Tokenizers", package: "swift-transformers")],
+            dependencies: [
+                .product(name: "Tokenizers", package: "swift-transformers"), .product(name: "Hub", package: "swift-transformers"),
+            ],
             swiftSettings: settings
         ),
         .executableTarget(

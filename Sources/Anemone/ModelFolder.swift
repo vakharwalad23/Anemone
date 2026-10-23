@@ -1,4 +1,5 @@
 import Foundation
+import Hub
 
 /// The `anemone.json` written by the converter next to the model's programs.
 public struct ModelConfig: Decodable, Sendable {
@@ -20,11 +21,19 @@ public struct ModelFolder: Sendable {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         self.url = url
-        config = try decoder.decode(ModelConfig.self, from: Data(contentsOf: url.appending(path: "anemone.json")))
+        let manifest = url.appending(path: "anemone.json")
+        guard FileManager.default.fileExists(atPath: manifest.path) else { throw AnemoneError.notAModelFolder(url.path) }
+        config = try decoder.decode(ModelConfig.self, from: Data(contentsOf: manifest))
     }
 
     func file(_ name: String) -> URL {
         url.appending(path: name)
+    }
+
+    /// Downloads a model folder from a Hugging Face repo (`org/name`) into `~/.cache/anemone`, reusing files already there.
+    public static func download(_ repo: String, progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> URL {
+        let base = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".cache/anemone")
+        return try await HubApi(downloadBase: base).snapshot(from: Hub.Repo(id: repo)) { progress($0.fractionCompleted) }
     }
 }
 
@@ -34,6 +43,7 @@ public enum AnemoneError: Error, CustomStringConvertible {
     case missingFunction(String)
     case missingOutput(String)
     case badEmbeddings(String)
+    case notAModelFolder(String)
 
     public var description: String {
         switch self {
@@ -42,6 +52,7 @@ public enum AnemoneError: Error, CustomStringConvertible {
         case .missingFunction(let name): "the model has no function \(name)"
         case .missingOutput(let name): "a model call returned no \(name)"
         case .badEmbeddings(let reason): "embedding table: \(reason)"
+        case .notAModelFolder(let path): "\(path) is not an Anemone model folder (no anemone.json); make one with the converter"
         }
     }
 }
