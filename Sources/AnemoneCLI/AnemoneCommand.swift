@@ -7,7 +7,7 @@ struct AnemoneCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "anemone",
         abstract: "Run LLMs on the Apple Neural Engine with a GPU drafter.",
-        subcommands: [Run.self, Chat.self, Bench.self]
+        subcommands: [Run.self, Chat.self, Serve.self, Bench.self]
     )
 }
 

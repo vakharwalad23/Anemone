@@ -16,6 +16,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/huggingface/swift-transformers", exact: "1.2.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", exact: "1.7.0"),
+        .package(url: "https://github.com/hummingbird-project/hummingbird", exact: "2.22.0"),
     ],
     targets: [
         .target(
@@ -25,7 +26,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "AnemoneCLI",
-            dependencies: ["Anemone", .product(name: "ArgumentParser", package: "swift-argument-parser")],
+            dependencies: [
+                "Anemone", .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "Hummingbird", package: "hummingbird"),
+            ],
             swiftSettings: settings
         ),
         .testTarget(name: "AnemoneTests", dependencies: ["Anemone"], swiftSettings: settings),
