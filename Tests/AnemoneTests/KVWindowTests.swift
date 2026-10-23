@@ -37,3 +37,16 @@ import Testing
         #expect(throws: AnemoneError.self) { try KVWindow(context: 1024, widths: [8]).plan(Array(repeating: 1, count: 9)) }
     }
 }
+
+@Suite struct KVWindowTreeTests {
+    @Test func replaysAnAcceptedSideBranch() throws {
+        var window = KVWindow(context: 1024, widths: [8, 16])
+        window.commit([1, 2, 3, 4])
+        // golden, one chain token in place, then a side branch whose KV sits in a branch row
+        window.accept([5, 6, 7], inPlace: 2)
+        #expect(window.history == [1, 2, 3, 4, 5, 6, 7])
+        #expect(window.valid == 6)
+        #expect(window.offset == 4)
+        #expect(try window.plan([8]).batch == [5, 6, 7, 8])
+    }
+}

@@ -14,6 +14,8 @@ struct KVWindow {
     let context: Int
     let widths: [Int]
     private(set) var history: [Int32] = []
+    /// History entries whose KV sits in its own slot; a side branch accepted from a tree is in history but not in place.
+    private(set) var valid = 0
 
     init(context: Int, widths: [Int]) {
         precondition(!widths.isEmpty, "a target needs at least one call width")
@@ -22,12 +24,17 @@ struct KVWindow {
     }
 
     var offset: Int {
-        history.count - history.count % Self.writeAlign
+        valid - valid % Self.writeAlign
+    }
+
+    /// Tokens the next call re-runs before the new ones.
+    var replay: Int {
+        history.count - offset
     }
 
     /// Most new tokens one call can take after the replayed ones.
     var capacity: Int {
-        widths[widths.count - 1] - (history.count - offset)
+        widths[widths.count - 1] - replay
     }
 
     func plan(_ tokens: [Int32]) throws -> TargetCall {
@@ -41,13 +48,22 @@ struct KVWindow {
 
     mutating func commit(_ tokens: [Int32]) {
         history += tokens
+        valid = history.count
+    }
+
+    /// Appends `tokens`, of which only the first `inPlace` had their KV written in their own slots.
+    mutating func accept(_ tokens: [Int32], inPlace: Int) {
+        valid = history.count + inPlace
+        history += tokens
     }
 
     mutating func rewind(_ count: Int) {
         history.removeLast(count)
+        valid = min(valid, history.count)
     }
 
     mutating func reset() {
         history = []
+        valid = 0
     }
 }
