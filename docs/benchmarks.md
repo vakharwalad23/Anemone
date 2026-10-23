@@ -1,6 +1,6 @@
 # Benchmarks
 
-Every number Anemone quotes, with how it was measured. All come from the Python lab prototype and a Swift timing tool, run on 2026-10-23. The Swift engine is not built yet.
+Every number Anemone quotes, with how it was measured. All come from the Python lab prototype and two Swift timing tools, run on 2026-10-23. The Swift engine is not built yet.
 
 ## Setup
 
@@ -95,6 +95,28 @@ Simulated in PyTorch before export (no ANE involved):
 
 - 4096 costs 47% more than 1024; 8192 costs 213% more. The extra KV reads explain only a small part ([Math](math.md#kv-cache-traffic-at-long-context)).
 - Projected full verify: about 93 ms at 4096 and 190 ms at 8192.
+
+## Drafter runtime
+
+Measured on battery power (100% to 83%, Low Power Mode off), so the absolute numbers are lower than the AC tables above. Both drafters ran in the same session against the same ANE target.
+
+| drafter | tokens/s, 6-prompt mean | accepted per cycle | ms per cycle | lossless |
+|---|---|---|---|---|
+| MLX 4-bit, two runs | 38.0 / 40.6 | 2.74 | 95.8 / 90.7 | 12/12 |
+| **Core AI GPU program, int4** | **41.5** | **2.83** | **90.7** | **6/6** |
+| Core AI GPU program, 65536-token vocabulary | 41.0 | 2.66 | 88.5 | 6/6 |
+
+Swift timing tool, ANE context 1024, width 16, 50 runs:
+
+| cycle | ms |
+|---|---|
+| draft alone | 21.5 |
+| verify alone | 66.4 |
+| draft, then verify, each call waited for | 87.4 |
+| **draft fed into verify with `encode`, one wait at the end** | **83.7** |
+
+- The drafter writes the verify input itself, so chaining needs no CPU step between the GPU and the ANE.
+- The smaller draft vocabulary saves about 1 ms per draft on the GPU and costs acceptance, so the full vocabulary stays.
 
 ## Token trees (Python)
 

@@ -59,8 +59,9 @@ sequenceDiagram
 
 - DSpark block 7 from DeepSeek: 5 transformer layers that read the 8B's hidden states at layers 1, 9, 17, 25 and 33.
 - A markov head adds a low-rank next-token correction to each guess. A confidence head estimates the chance each guess is accepted.
-- The draft vocabulary can be cut to the 65536 most frequent tokens: 15.1 ms per draft instead of 19.8, with almost the same acceptance. It stays lossless because the 8B checks every token.
-- Runtime is not decided. The candidates are MLX Swift and a Core AI GPU program that could chain with the ANE verify without a CPU sync. A measurement decides.
+- It runs as one Core AI program on the GPU. Each call adds the hidden states of the newly accepted tokens to its context, drafts the 7 guesses, and writes the 16-row input of the next ANE verify, so the guesses go from GPU to ANE without passing through the CPU.
+- All shapes are fixed: positions, counts and offsets are inputs, and attention reads the whole cache through a mask. Changing shapes made Core AI recompile on every call (about 350 ms each).
+- Chained with `encode`, draft plus verify takes 83.7 ms per cycle, against 87.4 ms when each call waits for the last. MLX was measured as the alternative: same acceptance, no faster cycle, and a second runtime to ship. See [Benchmarks](benchmarks.md#drafter-runtime).
 
 ## Trees and confidence scheduling (planned)
 

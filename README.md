@@ -61,7 +61,7 @@ Details: [Architecture](docs/architecture.md) and [Math](docs/math.md).
 
 ## Roadmap
 
-1. Pick the drafter runtime by measurement: MLX Swift, or a Core AI GPU program chained to the ANE without a CPU sync.
+1. Pick the drafter runtime by measurement. Done: a Core AI GPU program, chained to the ANE without a CPU sync (83.7 ms per cycle, lossless).
 2. Engine core: the `Anemone` Swift package for apps and the `anemone` command line tool, built together.
 3. Usable: `anemone chat`, `anemone serve` with an OpenAI-compatible API, model download from Hugging Face, context up to 4096 tokens.
 4. Faster: token trees, confidence-scheduled drafting, a smaller draft vocabulary. Target 45 to 49 tokens/s.
