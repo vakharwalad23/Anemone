@@ -1,6 +1,6 @@
 # Contributing
 
-Anemone is early: the design and the lab numbers are written down, the Swift engine is not built yet. Issues with measurements from other Macs are the most useful contribution right now.
+Anemone is young: one model (Qwen3-8B) on one tested Mac (M3 Pro). Results from other Macs are the most useful contribution right now: run `anemone bench` and open an issue with its output, your chip, memory and macOS build.
 
 ## Requirements
 

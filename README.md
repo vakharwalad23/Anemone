@@ -1,32 +1,80 @@
 # Anemone
 
-Anemone runs open-weight LLMs on the Apple Neural Engine (ANE). The large model runs on the ANE, a small drafter on the GPU guesses the next few tokens, and the ANE checks all the guesses in one pass. The output is exactly what the model produces when it decodes one token at a time.
+Fast, low-power LLM inference on the Apple Neural Engine (ANE).
 
-Status: design and lab prototype. The Swift engine is not built yet, so there is nothing to install. Every number below comes from the Python lab prototype on one Mac.
+Anemone runs the large model on the ANE and a small drafter on the GPU. The drafter guesses the next 7 tokens, and the ANE checks all of them in one pass. Qwen3-8B generates **45.5 tokens/s on an M3 Pro, 1.5x MLX on the GPU, at 0.48 J per token, 2.4x less energy**. The output is token for token what the model produces on its own.
 
-## Results so far
+```text
+$ anemone bench --model models/qwen3-8b
+math      plain  16.2 tok/s   speculative  77.3 tok/s   accepted 5.50   lossless yes
+code      plain  16.3 tok/s   speculative  66.9 tok/s   accepted 4.54   lossless yes
+explain   plain  16.3 tok/s   speculative  42.7 tok/s   accepted 2.62   lossless yes
+summary   plain  16.3 tok/s   speculative  32.5 tok/s   accepted 1.75   lossless yes
+advice    plain  16.3 tok/s   speculative  35.2 tok/s   accepted 1.93   lossless yes
+translate plain  16.3 tok/s   speculative  18.6 tok/s   accepted 0.65   lossless yes
+mean      plain  16.3 tok/s   speculative  45.5 tok/s   accepted 2.83   lossless 6/6
+```
 
-Qwen3-8B with thinking off, greedy decoding, 6 prompts x 256 tokens. M3 Pro 18 GB, macOS 27.0.1, AC power, quiet machine.
+## Results
+
+Qwen3-8B, thinking off, greedy decoding, 6 prompts x 256 tokens. M3 Pro 18 GB, macOS 27.0.1, AC power.
 
 | engine | where the 8B runs | tokens/s | wall power | energy per token |
 |---|---|---|---|---|
-| **Anemone prototype: 8B on the ANE, DSpark drafter on the GPU** | **ANE** | **41.0** | **19.8 W** | **0.53 J** |
-| MLX 4-bit + DSpark drafter | GPU | 32.2 | 39.2 W | 1.28 J |
-| MLX 4-bit | GPU | 30.8 | 30.9 W | 1.10 J |
-| 8B on the ANE, no drafter | ANE | 15.1 | 14.1 W | 0.95 J |
+| **Anemone (Swift): 8B on the ANE, drafter on the GPU** | **ANE** | **45.5** | **19.5 W** | **0.48 J** |
+| MLX 4-bit + DSpark drafter | GPU | 32.2 | 40.3 W | 1.31 J |
+| MLX 4-bit | GPU | 30.8 | 31.7 W | 1.14 J |
+| Anemone without the drafter | ANE | 16.3 | 15.4 W | 0.96 J |
 
-- 1.33x faster than plain MLX and 2.1x less energy per token, at 64% of the wall power.
-- Tokens/s is decode only. Power and energy are whole-system readings from the SMC over two interleaved rounds; see [Benchmarks](docs/benchmarks.md).
+- 1.48x faster than MLX and 2.4x less energy per token, at 62% of the wall power. The GPU draws about 1 W; the drafter is small.
+- Tokens/s is decode speed (`anemone bench`; MLX from the lab night run on the same Mac and macOS). Power and energy are whole-system SMC readings over the generation window including prefill, two rounds each, all measured the same night. See [Benchmarks](docs/benchmarks.md) for every run and its method.
 
-Quality of the 4-bit weights, measured against the bf16 model on the same text (lower KL is closer; top-1 is how often the most likely next token matches):
+The 4-bit weights are also closer to the original model than MLX 4-bit (KL against bf16, lower is better):
 
 | 4-bit weights | KL, docs | KL, chat | top-1, docs | top-1, chat |
 |---|---|---|---|---|
-| **Anemone palettizer, on the ANE** | **0.047** | **0.086** | **0.892** | **0.919** |
-| MLX 4-bit affine, group 64, on the GPU | 0.085 | 0.086 | 0.870 | 0.902 |
-| Core AI default palettizer, on the ANE | 0.341 | 0.371 | 0.767 | 0.825 |
+| **Anemone (GPTQ onto ANE lookup tables)** | **0.047** | **0.086** | **0.892** | **0.919** |
+| MLX 4-bit affine, group 64 | 0.085 | 0.086 | 0.870 | 0.902 |
+| Core AI default palettizer | 0.341 | 0.371 | 0.767 | 0.825 |
 
-Same file size and same speed as the Core AI default, with 7.3x lower KL on docs and 4.3x on chat.
+## Quick start
+
+Requirements: an Apple Silicon Mac with macOS 27 and Xcode 27. Tested on M3 Pro (18 GB).
+
+```sh
+git clone https://github.com/vakharwalad23/Anemone.git
+cd Anemone
+swift build -c release
+```
+
+Make a model folder with the converter (see [Converting a model](docs/convert.md)); prebuilt folders on Hugging Face are coming. Then:
+
+```sh
+.build/release/anemone run --model models/qwen3-8b "Explain how a CPU cache works."
+.build/release/anemone chat --model models/qwen3-8b
+.build/release/anemone bench --model models/qwen3-8b
+```
+
+The first load on a Mac compiles the model for the ANE and takes about 7.5 minutes. macOS caches the result per app, so later loads take about 4 seconds.
+
+## Use it from Swift
+
+```swift
+// Package.swift
+.package(url: "https://github.com/vakharwalad23/Anemone.git", branch: "main")
+```
+
+```swift
+import Anemone
+
+let model = try await LanguageModel.load(from: URL(fileURLWithPath: "models/qwen3-8b"))
+for try await event in model.generate([ChatMessage(.user, "Write a haiku about the sea.")]) {
+    switch event {
+    case .text(let piece): print(piece, terminator: "")
+    case .finished(let response): print("\n\(response.stats.tokensPerSecond) tok/s")
+    }
+}
+```
 
 ## How it works
 
@@ -40,45 +88,53 @@ flowchart LR
     A --> D
 ```
 
-- Decoding one token at a time is limited by how fast weights stream from memory. The ANE streams them at about half the GPU's speed, so on its own it loses: 15.1 vs 30.8 tokens/s.
-- The ANE has spare compute. Checking 16 tokens in one call costs 67.5 ms; producing one token costs 65.8 ms.
-- The DSpark drafter (from DeepSeek) is small and runs on the GPU. When 2.74 of its guesses are accepted on average, each 88.6 ms cycle yields 3.74 tokens.
-- A guess is kept only if it equals the 8B's own top choice, so the text is identical to plain greedy decoding.
+- Decoding one token at a time is limited by how fast the weights stream from memory, and the ANE streams them at about half the GPU's speed. On its own the ANE loses: 16.3 tokens/s against 30.8 for MLX.
+- The ANE has spare compute, so checking 16 tokens costs about the same as producing one: 62 ms per check against 61 ms per plain token.
+- The DSpark drafter from DeepSeek is small and runs on the GPU in 20.5 ms. A cycle of draft plus check takes 83 ms and yields 3.83 tokens on average.
+- A guess is kept only if it equals the 8B's own top choice, so the text is identical to plain greedy decoding. `anemone bench` checks this on every run.
 
 Details: [Architecture](docs/architecture.md) and [Math](docs/math.md).
 
 ## What is new
 
-- GPTQ error feedback onto the ANE's lookup-table weights. Core AI stores 4-bit weights as 16 values per group of 32 rows. Anemone picks those 16 values with activation-weighted k-means, then snaps one input column at a time and pushes each column's rounding error onto the columns not yet snapped. The result still has 16 values per group, so it exports through Core AI unchanged.
-- Calibration on the model's own chat answers. Adding 4.3k tokens of the model's replies to 16 unrelated prompts lowered chat KL from 0.139 to 0.086.
-- A palettization simulator that predicts on-device quality within 0.004 KL, so weights can be tuned without an export.
-- A closer target accepts more drafts: math went from 3.98 to 5.07 accepted tokens per check.
+- GPTQ onto the ANE lookup tables. Core AI stores 4-bit weights as 16 values per group of 32 rows. Anemone picks the 16 values with activation-weighted k-means, then snaps one input column at a time and pushes each column's rounding error onto the columns not yet snapped. The result still has 16 values per group, so it exports through Core AI unchanged: same size and speed as Apple's default, 7.3x lower KL.
+- Calibration on the model's own chat answers. Adding the model's replies to 16 unrelated prompts lowered chat KL from 0.139 to 0.086.
+- The drafter as one Core AI GPU program. It adds the 8B's hidden states to its context, drafts 7 tokens and emits the embedded input for the next ANE check in one call, with fixed shapes so nothing recompiles.
+- One KV cache for every context size. Each call uses the smallest context the conversation fits in, which is faster at short context.
 
-## Requirements
+## Converting a model
 
-- Apple Silicon Mac with macOS 27 and Xcode 27 (Core AI). Tested on M3 Pro only.
-- The first load of a model on a new Mac takes about 7 minutes while macOS compiles it for the ANE. Later loads are instant.
+```sh
+uv run --project convert --extra export anemone-convert quantize --out work/qwen3-8b-lut4
+uv run --project convert --extra export anemone-convert target --checkpoint work/qwen3-8b-lut4 --out work/qwen3-8b-chunks
+uv run --project convert --extra export anemone-convert drafter --out work/drafter.aimodel
+uv run --project convert anemone-convert package --chunks work/qwen3-8b-chunks --drafter work/drafter.aimodel --out models/qwen3-8b
+```
 
-## Roadmap
+See [Converting a model](docs/convert.md) for what each step does, how long it takes and how much memory it needs.
 
-1. Pick the drafter runtime by measurement. Done: a Core AI GPU program, chained to the ANE without a CPU sync (83.7 ms per cycle, lossless).
-2. Engine core: the `Anemone` Swift package for apps and the `anemone` command line tool, built together.
-3. Usable: `anemone chat`, `anemone serve` with an OpenAI-compatible API, model download from Hugging Face, context up to 4096 tokens.
-4. Faster: token trees, confidence-scheduled drafting, a smaller draft vocabulary. Target 45 to 49 tokens/s.
-5. 8192-token context. Today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found.
-6. More models: DeepSeek-R1-0528-Qwen3-8B, other Qwen3 sizes, then other families with DSpark-style drafters.
+## Status and roadmap
+
+Working today: Qwen3-8B with thinking off, greedy decoding, up to 1024 tokens of context (4096 with the 4k export), one request at a time, `run`, `chat` and `bench`.
+
+1. Done: drafter runtime picked by measurement, Swift engine and CLI, converter.
+2. Next: an OpenAI-compatible `anemone serve`, prebuilt models on Hugging Face, 4096-token context by default.
+3. Faster: hide the draft behind the ANE check, token trees with confidence scheduling, mixed 3/4/6-bit weights.
+4. 8192-token context. Today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found.
+5. More models: DeepSeek-R1-0528-Qwen3-8B, other Qwen3 sizes, then other families with DSpark-style drafters.
 
 ## Docs
 
 - [Architecture](docs/architecture.md): parts, decode loop, model pipeline.
 - [Math](docs/math.md): the formulas behind speed, energy and quality, with worked examples.
 - [Benchmarks](docs/benchmarks.md): every measurement, with setup and method.
-- [Contributing](CONTRIBUTING.md).
+- [Converting a model](docs/convert.md).
+- [Contributing](CONTRIBUTING.md): measurements from other Macs are the most useful contribution.
 
 ## Credits
 
 - DeepSeek's DeepInfer for the DSpark drafter and confidence-scheduled verification.
-- Apple's Core AI for the ANE runtime.
+- Apple's Core AI and coreai-models for the ANE runtime and export tools.
 - Qwen3 by the Qwen team. Model weights keep their own licenses.
 
 ## License
