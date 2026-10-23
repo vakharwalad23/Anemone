@@ -32,6 +32,20 @@ Release build, model folder from the converter (GPTQ LUT4 chunks, Core AI drafte
 - Each call uses the smallest context rung that fits (256, 512 or 1024), which is why plain decoding (61.3 ms per token) beats the lab's 65.8 ms.
 - First load of a model folder: 452 s (ANE compilation, cached per executable). Later loads: 3.9 to 4.3 s.
 
+### Long context (4096 export)
+
+Same engine, model folder exported with `--context 4096` (rungs 256 to 4096) and a drafter with 4160 cache slots.
+
+| run | prefill | decode tok/s | accepted per cycle |
+|---|---|---|---|
+| 2725-token prompt, plain | 4614 ms (591 tok/s) | 11.3 | - |
+| **2725-token prompt, speculative** | **4704 ms** | **30.5** | **2.53** |
+| 6 short prompts, speculative (mean) | - | 43.3 | 2.84 |
+
+- Output of the long prompt is identical with and without the drafter.
+- Before the drafter's `inject` entry point, speculative prefill took 10936 ms: the prompt reached the drafter 8 rows per call. With 64 rows per call (7.1 ms each) it adds about 90 ms.
+- On short prompts the 4096 folder verifies as fast as the 1024 folder (62.5 ms, smallest rung per call); drafting takes 24.7 ms instead of 21.4 because the drafter attends over all 4160 slots.
+
 ### Energy, same night
 
 Whole-system SMC power over the generation window including prefill, after 10 s of idle, two rounds each. Anemone from `e13_swift_energy.py`, MLX from `e08_energy.py`.
