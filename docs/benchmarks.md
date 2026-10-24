@@ -112,14 +112,15 @@ Simulated in PyTorch before export (no ANE involved):
 | weights | docs KL | chat KL |
 |---|---|---|
 | Weighted k-means + GPTQ, plus chat calibration | 0.045 | 0.084 |
-| Weighted k-means + GPTQ, converter default calibration (standard library + chat) | 0.107 | 0.080 |
+| Weighted k-means + GPTQ, standard library + chat calibration | 0.107 | 0.080 |
+| **Weighted k-means + GPTQ, converter default calibration (standard library, ML library code, chat)** | **0.059** | **0.076** |
 | 6-bit lookup tables, plain k-means (1.5x the bytes) | 0.025 | 0.030 |
 | 3-bit lookup tables, weighted k-means + GPTQ (0.75x the bytes) | 0.202 | 0.391 |
 
 - The simulator matched the ANE within 0.004 KL on every export measured.
 - Chat calibration: 4.3k tokens of the model's own answers to 16 prompts unrelated to the test prompts.
 - Against MLX 4-bit, the lab weights are 1.8x lower on docs KL and tied on chat KL (0.0864 vs 0.0859, lower on 5 of 6 prompts), with higher top-1 on both.
-- Caveat: the lab calibrated on code and docs from the same repo as the four docs files, so the 0.047 docs KL is partly a domain match. The converter's default calibration (six Python standard library files plus the model's chat answers) scores 0.107 on docs (worse than MLX) and 0.080 on chat (better than MLX, top-1 0.922). GPTQ fits whatever it calibrates on; a broader calibration set is the next quality experiment.
+- Caveat: the lab calibrated on code and docs from the same repo as the four docs files, so the 0.047 docs KL is partly a domain match. Calibrating on six Python standard library files plus the chat answers scores 0.107 on docs (worse than MLX). Adding five machine-learning library modules (transformers, torch, huggingface_hub; none from the docs repo) brings docs to 0.059 / 0.887 and chat to 0.076 / 0.915, lower KL than MLX on both; that is the converter's default now.
 
 ## Verify cost on the ANE (Swift timing tool)
 

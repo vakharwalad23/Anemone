@@ -1,3 +1,4 @@
+import importlib
 import json
 import shutil
 import sysconfig
@@ -20,6 +21,14 @@ DOCUMENTS = (
     "email/message.py",
     "difflib.py",
     "argparse.py",
+)
+# machine-learning code from the converter's own environment, so calibration covers the code people ask models about
+PACKAGE_MODULES = (
+    "transformers.generation.utils",
+    "transformers.trainer",
+    "transformers.models.qwen3.modeling_qwen3",
+    "torch.nn.modules.activation",
+    "huggingface_hub.hf_api",
 )
 # GPTQ's down_proj Hessian is 12288 wide, so a few thousand tokens leave most directions unconstrained
 DOCUMENT_TOKENS = 2048
@@ -46,7 +55,8 @@ CHAT_REPLY_TOKENS = 320
 
 def documents(checkpoint: Path) -> dict[str, list[int]]:
     tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-    return {name: tokenizer.encode((STDLIB / name).read_text())[:DOCUMENT_TOKENS] for name in DOCUMENTS}
+    paths = {name: STDLIB / name for name in DOCUMENTS} | {name: Path(importlib.import_module(name).__file__) for name in PACKAGE_MODULES}
+    return {name: tokenizer.encode(path.read_text())[:DOCUMENT_TOKENS] for name, path in paths.items()}
 
 
 def chat_replies(chat_model: str, checkpoint: Path) -> dict[str, list[int]]:
