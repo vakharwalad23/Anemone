@@ -44,7 +44,7 @@ The GPU side from a public implementation: [mlx-dspark](https://github.com/ARahi
 
 ### Qwen3-4B
 
-Converted with the stock converter (see [Converting a model](convert.md#qwen3-4b)), two 18-layer chunks, its own DSpark drafter (chain).
+Converted with the stock converter (see [Converting a model](convert.md#qwen3-4b)), two 18-layer chunks, its own DSpark drafter with runner-up tokens (tree).
 
 | engine | math | code | explain | summary | advice | translate | mean | equal to plain greedy |
 |---|---|---|---|---|---|---|---|---|
