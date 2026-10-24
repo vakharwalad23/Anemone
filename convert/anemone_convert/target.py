@@ -29,6 +29,8 @@ from safetensors import safe_open
 from torch import nn
 from transformers import PretrainedConfig, Qwen3Config
 
+from anemone_convert.attention import RowSDPA
+
 FUNCTION = "extend"
 INPUTS = (TRANSFORMER_INPUT_NAME, POSITION_IDS_INPUT_NAME, IN_STEP_INPUT_NAME, CAUSAL_MASK_INPUT_NAME)
 STATES = (KEY_CACHE_INPUT_NAME, VALUE_CACHE_INPUT_NAME)
@@ -41,6 +43,8 @@ INTERLEAVE = BaseForCausalLMForiOS.KV_CACHE_INTERLEAVE_FACTOR
 TRACE_WIDTH = 8
 # 9 layers of an 8B (about 0.84 GB at 4 bits) per ANE program; smaller models fit more layers per program
 LAYERS_PER_CHUNK = 9
+# Apple's SDPA is 3% faster up to here; at 8192 it costs 46 ms per chunk against 31 for RowSDPA (lab e20)
+ROW_ATTENTION_ABOVE = 4096
 
 
 def inverse_frequencies(config: PretrainedConfig) -> tuple[torch.Tensor, float]:
@@ -102,6 +106,9 @@ class TargetChunk(nn.Module):
         self.is_last = end == config.num_hidden_layers
         self.tap_slots = [layer - start for layer in taps if start <= layer < end]
         self.layers = nn.ModuleList(TransformerBlock(config, slot) for slot in range(end - start))
+        if config.max_position_embeddings > ROW_ATTENTION_ABOVE:
+            for layer in self.layers:
+                layer.self_attn.sdpa = RowSDPA(head_dim=config.head_dim)
         self.kv_cache = KVCacheHandler(end - start, config.hidden_size)
         self.rope = ScaledRoPECache(config)
         if self.is_last:
