@@ -150,7 +150,7 @@ Details: [Architecture](docs/architecture.md) and [Math](docs/math.md).
 
 - GPTQ onto the ANE lookup tables. Core AI stores 4-bit weights as 16 values per group of 32 rows. Anemone picks the 16 values with activation-weighted k-means, then snaps one input column at a time and pushes each column's rounding error onto the columns not yet snapped. The result still has 16 values per group, so it exports through Core AI unchanged: same size and speed as Apple's default, 7.3x lower KL.
 - Calibration on the model's own chat answers. Adding the model's replies to 16 unrelated prompts lowered chat KL from 0.139 to 0.086.
-- The drafter as one Core AI GPU program. It adds the 8B's hidden states to its context, drafts 7 tokens and emits the embedded input for the next ANE check in one call, with fixed shapes so nothing recompiles.
+- The drafter as one Core AI GPU program. It adds the 8B's hidden states to its context and drafts 7 tokens with a runner-up for each in one call, with fixed shapes so nothing recompiles.
 - One KV cache for every context size. Each call uses the smallest context the conversation fits in, which is faster at short context.
 - Row-wise attention for long context. Apple's attention for the ANE transposes the scores so the context sits on the channel axis, and at 8192 that makes a chunk 2.1x slower than at 4096. One last-axis softmax per KV group gives the same result (within 6e-7) at 1.5x.
 
@@ -167,7 +167,7 @@ See [Converting a model](docs/convert.md) for what each step does, how long it t
 
 ## Status and roadmap
 
-Working today: Qwen3-8B and Qwen3-4B with thinking off, DeepSeek-R1-0528-Qwen3-8B (29.8 tokens/s; the drafter is not trained for its thinking text), greedy decoding, up to 8192 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
+Working today: Qwen3-8B and Qwen3-4B (thinking off) and DeepSeek-R1-0528-Qwen3-8B (it always thinks, and the Qwen3-8B drafter accepts about half as much on its text: 29.8 tokens/s), greedy decoding, up to 8192 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
 
 Done:
 
