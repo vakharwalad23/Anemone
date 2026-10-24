@@ -104,5 +104,5 @@ flowchart LR
 ## Limits today
 
 - Greedy decoding only, one request at a time.
-- Context: up to 4096 tokens (the default export). At 8192 a chunk costs 3.1x more than at 1024, for a reason not yet found.
+- Context: up to 4096 tokens in the default export, 8192 with `--context 8192`. Above 4096 the chunks use row-wise attention (one last-axis softmax per KV group); Apple's attention transposes the scores and makes a chunk 3.1x slower at 8192 than at 1024.
 - macOS 27 only. Tested on M3 Pro only.

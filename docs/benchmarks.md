@@ -217,12 +217,23 @@ Simulated in PyTorch before export (no ANE involved):
 
 ## Long context (one chunk, width 16)
 
-| context | 1024 | 2048 | 4096 | 8192 |
-|---|---|---|---|---|
-| ms per chunk | 14.76 | 17.09 | 21.72 | 46.25 |
+| attention | 1024 | 2048 | 4096 | 8192 | 16384 |
+|---|---|---|---|---|---|
+| Apple's iOS SDPA (exports up to 4096) | 14.76 | 17.09 | 21.72 | 46.25 | - |
+| **RowSDPA (exports above 4096)** | **15.31** | - | **20.83** | **30.96** | **54.04** |
 
-- 4096 costs 47% more than 1024; 8192 costs 213% more. The extra KV reads explain only a small part ([Math](math.md#kv-cache-traffic-at-long-context)).
-- Projected full verify: about 93 ms at 4096 and 190 ms at 8192.
+- Apple's SDPA moves the context onto the channel axis before the softmax; past 4096 that transpose dominates (8192 costs 213% more than 1024). `RowSDPA` keeps the scores as rows and takes one last-axis softmax per KV group: 8192 costs 1.49x the 4096 rung, and past 4096 the cost grows about 2.6 ms per 1k tokens per 9-layer chunk (lab e20, 2026-10-25).
+- It is 3% slower at 1024, so 4096 exports keep Apple's SDPA.
+
+8192 folder (converter weights, tree drafter, `--context 8192` for `target` and `drafter`), 2026-10-25:
+
+| run | prefill | decode tok/s | accepted per cycle | lossless |
+|---|---|---|---|---|
+| 6 bench prompts | - | 46.7 (4096 folder: 46.8) | 3.06 | 6/6 |
+| 5449-token prompt, speculative | 17.0 s | 22.7 | 2.67 | yes |
+| 5449-token prompt, plain | 15.6 s | 9.5 | - | - |
+
+- First load: 1135 s. Export: target 336 s, drafter 95 s.
 
 ## Drafter runtime
 

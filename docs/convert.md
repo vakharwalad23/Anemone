@@ -34,6 +34,7 @@ uv run --project convert anemone-convert package --chunks work/qwen3-8b-chunks -
 
 - `quantize` calibrates on six Python standard library files, five machine-learning library modules from its own environment (transformers, torch, huggingface_hub) and the model's own answers to 16 chat prompts. It writes those answers with the MLX copy of the model, so the first run downloads `mlx-community/Qwen3-8B-4bit` (4.6 GB). Pass `--chat-calibration answers.json` to reuse a saved set.
 - `--context` defaults to 4096 (rungs 256 to 4096). Short conversations still use the small rungs and the drafter's small cache, so speed at short context is the same as a 1024 export (45.0 vs 45.1 tokens/s). Pass `--context 1024` to both `target` and `drafter` for a folder that compiles faster on first load (414 s instead of 702 s).
+- `--context 8192` (to both `target` and `drafter`) builds rungs up to 8192 with row-wise attention, which keeps 8192 at 1.5x the cost of 4096 ([Benchmarks](benchmarks.md#long-context-one-chunk-width-16)). First load takes 1135 s.
 - `drafter --context` must match the target's largest rung. The drafter gets one cache per size (1024 and the full context) and grows into the larger one, copying its KV, when a conversation passes 1024 tokens.
 - Downloads: the bf16 checkpoint is 16.4 GB. `package` hard-links the programs, so the folder costs only the 1.2 GB embedding table on top of the work directory.
 

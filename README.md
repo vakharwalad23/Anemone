@@ -75,7 +75,7 @@ Where others are ahead today:
 
 - Speed: on this Mac mlx-dspark is 1.35x faster. Its 8-row GPU check takes 49 ms against 64 ms for the ANE, and its drafter 11.7 ms against our 21 ms. Our drafter takes 16 ms when the GPU is already busy; after each 64 ms ANE check the GPU starts cold ([Benchmarks](docs/benchmarks.md#drafter-cost)).
 - Trees: MacPaw verifies trees of up to 64 tokens and keeps 5.6 tokens per cycle, against 4.0 for our width-16 trees.
-- Context: Forge reaches 64K to 192K tokens. Anemone stops at 4096.
+- Context: Forge reaches 64K to 192K tokens. Anemone runs 8192 today (a 5449-token prompt decodes at 22.7 tokens/s) and has measured one chunk at 16384.
 - Models: ANEMLL and Forge cover several families and sizes. Anemone runs two Qwen3 sizes.
 - Chips: every Anemone number is from one M3 Pro. On an M4 Max, MLX alone runs an 8B at about 90 tok/s ([apple-silicon-llm-bench](https://github.com/john-rocky/apple-silicon-llm-bench)); we have no numbers on M1, M2, M4 or M5 yet.
 
@@ -166,7 +166,7 @@ See [Converting a model](docs/convert.md) for what each step does, how long it t
 
 ## Status and roadmap
 
-Working today: Qwen3-8B and Qwen3-4B with thinking off, greedy decoding, up to 4096 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
+Working today: Qwen3-8B and Qwen3-4B with thinking off, greedy decoding, up to 8192 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
 
 Done:
 
@@ -176,12 +176,13 @@ Done:
 - Tree verify: side branches from the drafter's runner-up tokens fill the spare rows of each check, 4% faster than chains (45.9 vs 44.0 tokens/s).
 - Converter calibration that does not favor one domain (docs KL 0.107 -> 0.059).
 - Independent GPU baseline (mlx-dspark) and energy of the 4096-context folder, measured the same night.
+- 8192-token context: the cliff at 8192 was Apple's attention transposing the scores; row-wise attention brings a chunk from 46.4 to 31.0 ms, and a 5449-token prompt decodes at 22.7 tokens/s, lossless.
 
 Coming, in this order:
 
 1. More models: Qwen3-14B (it has a DSpark drafter) and DeepSeek-R1-0528-Qwen3-8B; Qwen3-4B on Hugging Face.
 2. A faster draft: the drafter call takes 16 ms on a busy GPU but 21 ms after each ANE check.
-3. Longer context: 8192 first (today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found), then 16K and 32K.
+3. Longer context: 16K (one chunk measured at 54 ms) and 32K, and a faster prefill for long prompts.
 4. Fewer bytes per check. Core AI's palettizer offers 1, 2, 4 and 6 bits, not 3; whether 2-bit tables on a few layers keep the quality is untested.
 5. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
 

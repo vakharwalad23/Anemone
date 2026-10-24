@@ -138,4 +138,4 @@ Example: confidences 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3 and a budget of 6 nodes g
 
 - 2 for keys and values, $L = 9$ layers per chunk, $n_{kv} = 8$ KV heads, $d = 128$ head size, $c$ context length, 2 bytes per fp16 value.
 
-Example: $c = 8192$ gives 302 MB, about 5.1 ms at 59 GB/s. Measured: a chunk costs 21.72 ms at 4096 and 46.25 ms at 8192. The extra 151 MB of KV explains 2.6 ms of the 24.5 ms jump, so the cliff at 8192 is not bandwidth.
+Example: $c = 8192$ gives 302 MB, about 5.1 ms at 59 GB/s. Measured: a chunk costs 21.72 ms at 4096 and 46.25 ms at 8192. The extra 151 MB of KV explains 2.6 ms of the 24.5 ms jump, so the cliff at 8192 is not bandwidth. It was the transpose of the attention scores in Apple's SDPA; with row-wise attention a chunk costs 30.96 ms at 8192 ([Benchmarks](benchmarks.md#long-context-one-chunk-width-16)).
