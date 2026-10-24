@@ -39,6 +39,35 @@ The 4-bit weights are also closer to the original model than MLX 4-bit (KL again
 
 The docs set (four files from one code repo) shares a domain with the text these weights were calibrated on, so its 0.047 is optimistic. With the converter's default calibration (Python standard library plus the model's own chat answers) the same method scores 0.107 on docs and 0.080 on chat: better than MLX on chat, worse on code and docs. Choosing calibration text is an open experiment.
 
+## How it compares
+
+Other public work on LLMs and the Neural Engine, as each project reports it (October 2026). The chips and models differ, so read each row against its own baseline, not against the other rows.
+
+| project | model, chip | where it runs | result against its GPU baseline |
+|---|---|---|---|
+| **Anemone** | **Qwen3-8B 4-bit, M3 Pro** | **8B on the ANE, DSpark drafter on the GPU** | **45.5 vs 32.2 tok/s for MLX 4-bit + the same drafter (1.41x), 2.7x less energy per token, output checked equal to plain greedy on every run** |
+| [MacPaw research](https://research.macpaw.com/projects/neural-engine) | LFM2.5-2.6B 8-bit, M4 Pro | model on the ANE with a DSpark drafter, trees up to 64 tokens | 136.9 vs 144.9 tok/s for MLX 8-bit + DSpark (0.94x), 2.6x to 3.4x less energy per request; no code published |
+| [ANEMLL Forge](https://github.com/Anemll/anemll-forge) | Qwen3.8-27B 3-bit, M6 (M5 or newer only) | model and DFlash2 drafter on the ANE | 60.8 vs 54.2 tok/s for llama.cpp 3-bit at 8K context (1.12x), 41% to 47% less energy per token, up to 192K context |
+| [mlx-ane-sd](https://github.com/allbilly/mlx-ane-sd) | Qwen3-4B 6-bit, M4 Pro | model and DFlash drafter on the ANE | 64.8 vs 29.3 tok/s for MLX bf16 (2.21x); token-identical only in a 1.80x setup |
+| [ANEMLL](https://github.com/Anemll/Anemll) | Qwen3-8B, M3 | model on the ANE, no drafter | 2.97 tok/s after the 1 MiB DMA fix ([audit](https://runaihome.com/blog/apple-neural-engine-llm-inference-2026/)) |
+
+What is different about Anemone:
+
+- **An 8B model on the ANE beats the GPU at the same bit width with the same drafter on both sides.** We know of no other public result like it: MacPaw's ANE engine is about 5% behind MLX + DSpark, and the other speedups are against a bf16 baseline or a 27B model on M5 and newer.
+- **It runs on an M3 Pro with 18 GB.** The other drafter results in the table need an M4 Pro, or an M5 or newer.
+- **Each engine does what it is good at.** The 8B runs on the ANE, which has spare compute to check 16 guesses at once. The drafter runs on the GPU, which streams weights about twice as fast as the ANE and so suits the drafter's small sequential steps. The drafter writes the input of the next ANE call itself, so the two run back to back with no CPU step, and they barely slow each other down when run at the same time (lab e14: 9 layers take 23.6 ms on the GPU and 15.4 ms on the ANE alone, 25.0 ms together).
+- **The output is exact.** `anemone bench` compares every speculative answer token for token with plain greedy decoding of the same weights.
+- **Standard Core AI, no private APIs.** The GPTQ weights use Apple's own 4-bit lookup-table format, so they export through Core AI unchanged and run wherever Core AI runs.
+
+Where others are ahead today:
+
+- Trees: MacPaw verifies trees of up to 64 tokens and keeps 5.6 tokens per cycle, against 3.83 for our chains. Anemone's tree verify is built and being measured.
+- Context: Forge reaches 64K to 192K tokens. Anemone stops at 4096.
+- Models: ANEMLL and Forge cover several families and sizes. Anemone has one model.
+- Chips: every Anemone number is from one M3 Pro. On an M4 Max, MLX alone runs an 8B at about 90 tok/s ([apple-silicon-llm-bench](https://github.com/john-rocky/apple-silicon-llm-bench)); we have no numbers on M1, M2, M4 or M5 yet.
+- Baseline: our MLX + DSpark number comes from our own MLX integration of the drafter. A rerun with public implementations is on the roadmap.
+- Energy: measured on the 1024-context export of the same weights, not yet on the published 4096-context folder.
+
 ## Quick start
 
 Requirements: an Apple Silicon Mac with macOS 27 and Xcode 27. Tested on M3 Pro (18 GB).
@@ -128,11 +157,22 @@ See [Converting a model](docs/convert.md) for what each step does, how long it t
 
 Working today: Qwen3-8B with thinking off, greedy decoding, up to 4096 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
 
-1. Done: drafter runtime picked by measurement, Swift engine and CLI, converter, 4096-token context, OpenAI-compatible server.
-2. Next: more models (Qwen3-4B and Qwen3-14B have DSpark drafters), better calibration text.
-3. Faster: hide the draft behind the ANE check, token trees with confidence scheduling, mixed 3/4/6-bit weights.
-4. 8192-token context. Today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found.
-5. More models: DeepSeek-R1-0528-Qwen3-8B, other Qwen3 sizes, then other families with DSpark-style drafters.
+Done:
+
+- Drafter runtime picked by measurement, Swift engine and CLI, converter, 4096-token context, OpenAI-compatible server.
+- Qwen3-8B published on [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone).
+- Tree verify in the engine: side branches from the drafter's second choices fill the spare rows of each check.
+
+Coming, in this order:
+
+1. Token trees measured against chains on the 6 bench prompts.
+2. Calibration text that does not favor one domain.
+3. An independent GPU baseline: [mlx-dspark](https://github.com/ARahim3/mlx-dspark) and [dflash-mlx](https://github.com/bstnxbt/dflash-mlx) on the same prompts and Mac.
+4. Energy of the published 4096-context folder.
+5. More models: Qwen3-4B and Qwen3-14B (both have DSpark drafters), then DeepSeek-R1-0528-Qwen3-8B.
+6. Longer context: 8192 first (today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found), then 16K and 32K.
+7. Faster checks: hide the draft behind the ANE check, mixed 3/4/6-bit weights.
+8. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
 
 ## Docs
 
