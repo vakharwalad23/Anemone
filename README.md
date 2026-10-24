@@ -65,7 +65,7 @@ Other public work on LLMs and the Neural Engine, as each project reports it (Oct
 What is different about Anemone:
 
 - **Energy per token.** 0.49 J for an 8B, against 0.71 J for the fastest GPU decoder with the same drafter and 1.20 J for plain MLX on the same Mac. Like MacPaw's ANE engine, Anemone trades some speed against the best GPU path for a large cut in energy.
-- **The GPU stays free.** The drafter is the only GPU work (about 1 W). Anemone and an 8B on MLX can run at the same time on one 18 GB Mac.
+- **The GPU stays free.** The drafter is the only GPU work (about 1 W). Anemone and mlx-dspark, both running an 8B at the same time on one 18 GB Mac, give 40 + 49 = about 88 tokens/s, against 63 for the fastest single engine (lab e17).
 - **It runs on an M3 Pro with 18 GB.** The other drafter results in the table need an M4 Pro, or an M5 or newer.
 - **Each engine does what it is good at.** The 8B runs on the ANE, which has spare compute to check 16 guesses at once. The drafter runs on the GPU, which streams weights about twice as fast as the ANE and so suits the drafter's small sequential steps. The two barely slow each other down when run at the same time (lab e14: 9 layers take 23.6 ms on the GPU and 15.4 ms on the ANE alone, 25.0 ms together).
 - **The output is exact.** `anemone bench` compares every speculative answer token for token with plain greedy decoding of the same weights. mlx-dspark's answers drift from plain greedy on 4 of the 6 bench prompts.
@@ -182,7 +182,7 @@ Coming, in this order:
 1. More models: Qwen3-14B (it has a DSpark drafter) and DeepSeek-R1-0528-Qwen3-8B; Qwen3-4B on Hugging Face.
 2. A faster draft: the drafter call takes 16 ms on a busy GPU but 21 ms after each ANE check.
 3. Longer context: 8192 first (today a chunk costs 3.1x more at 8192 than at 1024, for a reason not yet found), then 16K and 32K.
-4. Fewer bytes per check: mixed 3/4/6-bit weights.
+4. Fewer bytes per check. Core AI's palettizer offers 1, 2, 4 and 6 bits, not 3; whether 2-bit tables on a few layers keep the quality is untested.
 5. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
 
 ## Docs
