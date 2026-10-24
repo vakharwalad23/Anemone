@@ -1,6 +1,6 @@
 # Contributing
 
-Anemone is young: one model (Qwen3-8B) on one tested Mac (M3 Pro). Results from other Macs are the most useful contribution right now: run `anemone bench` and open an issue with its output, your chip, memory and macOS build.
+Anemone is young: three converted models (Qwen3-8B, Qwen3-4B, DeepSeek-R1-0528-Qwen3-8B) on one tested Mac (M3 Pro). Results from other Macs are the most useful contribution right now: run `anemone bench` and open an issue with its output, your chip, memory and macOS build.
 
 ## Requirements
 
