@@ -56,6 +56,19 @@ Converted with the stock converter (see [Converting a model](convert.md#qwen3-4b
 - Energy, two rounds: Anemone 0.303 / 0.305 J/token at 19.6 W; mlx-dspark 0.430 / 0.423 at 33.9 / 33.1 W; MLX plain 0.640 / 0.638 at 31.1 / 30.9 W.
 - Quality against bf16 Qwen3-4B (e07, simulated): docs KL 0.077, top-1 0.891; chat KL 0.112, top-1 0.915. MLX 4-bit: 0.095 / 0.875 and 0.107 / 0.917.
 
+### DeepSeek-R1-0528-Qwen3-8B
+
+Converted with the stock converter and the Qwen3-8B DSpark tree drafter (DeepSeek publishes no drafter for R1). R1 always thinks, so the 256-token answers are thinking text.
+
+| engine | math | code | explain | summary | advice | translate | mean | equal to plain greedy |
+|---|---|---|---|---|---|---|---|---|
+| MLX 4-bit plain | 30.2 | 30.2 | 30.0 | 29.5 | 30.0 | 30.1 | 30.0 | 6/6 |
+| mlx-dspark, same drafter | 52.6 | 38.5 | 37.8 | 34.0 | 34.5 | 34.5 | 38.7 | 0/6 |
+| **Anemone** | **44.8** | **34.0** | **28.9** | **21.4** | **25.0** | **24.5** | **29.8** | **6/6** |
+
+- Anemone accepts 1.53 drafts per cycle against 3.01 on Qwen3-8B: the drafter was trained on Qwen3-8B's answers, not on thinking text. Plain 16.1 tokens/s, first load 714 s.
+- Quality against bf16 R1 (e07): docs KL 0.240, chat 0.152; MLX 4-bit 0.288 and 0.143.
+
 ### Energy
 
 `e13_swift_energy.py` around `anemone bench` and `e15_gpu_baselines.py --power` for MLX, one after another, two rounds. Whole-system SMC power over the generation window including prefill.

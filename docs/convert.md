@@ -1,6 +1,6 @@
 # Converting a model
 
-The converter turns a Hugging Face checkpoint into an Anemone model folder. It is a Python project in `convert/` that runs through [uv](https://docs.astral.sh/uv/). Supported today: Qwen3-8B with the `deepseek-ai/dspark_qwen3_8b_block7` drafter, and Qwen3-4B with `deepseek-ai/dspark_qwen3_4b_block7`.
+The converter turns a Hugging Face checkpoint into an Anemone model folder. It is a Python project in `convert/` that runs through [uv](https://docs.astral.sh/uv/). Supported today: Qwen3-8B with the `deepseek-ai/dspark_qwen3_8b_block7` drafter, Qwen3-4B with `deepseek-ai/dspark_qwen3_4b_block7`, and DeepSeek-R1-0528-Qwen3-8B with the Qwen3-8B drafter (it accepts about half as many drafts on R1's thinking text).
 
 ```mermaid
 flowchart LR
@@ -55,6 +55,20 @@ uv run --project convert anemone-convert package --model Qwen/Qwen3-4B --chunks 
 | `target` | 232 s | 11.7 GB |
 | `drafter` | 45 s | not measured |
 | first load (ANE compile) | 627 s | - |
+
+## DeepSeek-R1-0528-Qwen3-8B
+
+No MLX copy is published, so make one for the chat calibration (14 s), then pass the R1 id where the steps above take Qwen3-8B. The drafter is the Qwen3-8B one.
+
+```sh
+uv run --project convert --extra export mlx_lm.convert --hf-path deepseek-ai/DeepSeek-R1-0528-Qwen3-8B -q --q-bits 4 --mlx-path work/r1-mlx-4bit
+uv run --project convert --extra export anemone-convert quantize --model deepseek-ai/DeepSeek-R1-0528-Qwen3-8B --chat-model work/r1-mlx-4bit --out work/r1-lut4
+uv run --project convert --extra export anemone-convert target --checkpoint work/r1-lut4 --out work/r1-chunks
+uv run --project convert --extra export anemone-convert drafter --out work/drafter.aimodel
+uv run --project convert anemone-convert package --model deepseek-ai/DeepSeek-R1-0528-Qwen3-8B --chunks work/r1-chunks --drafter work/drafter.aimodel --out models/r1-qwen3-8b
+```
+
+Quantize took 2245 s at 5.4 GB peak, the first load 714 s.
 
 ## The model folder
 
