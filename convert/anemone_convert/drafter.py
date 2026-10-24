@@ -19,7 +19,7 @@ from torch import nn
 
 INPUTS = ("taps", "prefix_ids", "position_ids", "offset", "injected", "prefix")
 STATES = ("k_cache", "v_cache")
-OUTPUTS = ("tokens", "confidence", "verify_input")
+OUTPUTS = ("tokens", "second", "confidence", "verify_input")
 INJECT_INPUTS = ("taps", "position_ids", "offset")
 TAP_ROWS = 8
 # prefill injects the prompt's taps 64 rows per call, the target's widest prefill call
@@ -150,8 +150,8 @@ class DSparkStep(nn.Module):
         for layer in self.layers:
             hidden = layer(hidden, features, position_ids, (k_cache, v_cache), offset, mask)
         logits = self.lm_head(self.norm(hidden))[0]
-        tokens, confidence = self.roll(hidden[0], logits, golden)
-        return tokens, confidence, self.embed_tokens(verify_ids(prefix_ids[0], prefix, tokens))[None, :, None, :]
+        tokens, second, confidence = self.roll(hidden[0], logits, golden)
+        return tokens, second, confidence, self.embed_tokens(verify_ids(prefix_ids[0], prefix, tokens))[None, :, None, :]
 
     def attention_mask(self, offset: torch.Tensor, injected: torch.Tensor, context: int) -> torch.Tensor:
         block_size = self.cfg["block_size"]
@@ -162,14 +162,19 @@ class DSparkStep(nn.Module):
         mask = torch.where(valid, 0.0, float("-inf")).to(torch.float16)
         return mask[None, None, None, :].expand(1, 1, block_size, context)
 
-    def roll(self, hidden: torch.Tensor, logits: torch.Tensor, previous: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        tokens, gates = [], []
+    def roll(self, hidden: torch.Tensor, logits: torch.Tensor, previous: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """The drafted chain, the runner-up at each step (side branches of a verify tree) and the chain's confidences."""
+        tokens, seconds, gates = [], [], []
         for step in range(self.cfg["block_size"]):
             markov = self.markov_w1(previous)
-            previous = torch.argmax(logits[step] + self.markov_w2(markov)[0], dim=-1, keepdim=True).to(torch.int32)
+            scores = logits[step] + self.markov_w2(markov)[0]
+            best = torch.argmax(scores, dim=-1, keepdim=True).to(torch.int32)
+            masked = torch.where(torch.arange(scores.shape[-1]) == best, float("-inf"), scores)
+            seconds.append(torch.argmax(masked, dim=-1, keepdim=True).to(torch.int32))
             gates.append(self.confidence(torch.cat([hidden[step : step + 1], markov], dim=-1))[0])
-            tokens.append(previous)
-        return torch.cat(tokens), torch.sigmoid(torch.cat(gates).float())
+            tokens.append(best)
+            previous = best
+        return torch.cat(tokens), torch.cat(seconds), torch.sigmoid(torch.cat(gates).float())
 
 
 def verify_ids(prefix_ids: torch.Tensor, prefix: torch.Tensor, tokens: torch.Tensor) -> torch.Tensor:
