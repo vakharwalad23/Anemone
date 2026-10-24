@@ -29,7 +29,7 @@ struct ModelOptions: ParsableArguments {
     func resolve() async throws -> URL {
         let local = URL(fileURLWithPath: model)
         if FileManager.default.fileExists(atPath: local.path) || model.split(separator: "/").count != 2 { return local }
-        log("Downloading \(model) from Hugging Face (about 5 GB the first time).")
+        log("Downloading \(model) from Hugging Face; later runs reuse the download.")
         let reported = Mutex(-5)
         return try await ModelFolder.download(model) { fraction in
             let percent = Int(fraction * 100)

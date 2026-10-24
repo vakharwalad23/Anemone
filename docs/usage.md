@@ -72,3 +72,14 @@ print("\n\(reply.stats.tokensPerSecond) tok/s, \(reply.stats.acceptedPerCycle) d
 | `ModelFolder.download(_:progress:)` | fetches a model folder from Hugging Face |
 
 `LanguageModel` is an actor and runs one request at a time.
+
+## Removing a model
+
+A model downloaded by repo id lives in two places that share the same disk blocks (about 6 GB in total for Qwen3-8B): the model folder in `~/.cache/anemone` and the Hugging Face download cache. The compiled Neural Engine programs sit in the Core AI cache under the executable's name; remove them only to remove every model, since the next load then compiles again. The last two paths are small URL session files.
+
+```sh
+rm -rf ~/.cache/anemone/models/vakharwalad23/Qwen3-8B-Anemone
+rm -rf ~/.cache/huggingface/hub/models--vakharwalad23--Qwen3-8B-Anemone
+rm -rf ~/Library/Caches/coreai-cache/*/anemone
+rm -rf ~/Library/Caches/anemone ~/Library/HTTPStorages/anemone
+```
