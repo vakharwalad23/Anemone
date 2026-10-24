@@ -1,6 +1,6 @@
 # Benchmarks
 
-Every number Anemone quotes, with how it was measured, all from 2026-10-23. The first section is the Swift engine; the later sections come from the Python lab prototype and two Swift timing tools, which the engine was built from.
+Every number Anemone quotes, with how it was measured, from 2026-10-23 and 2026-10-24. The first two sections are the Swift engine; the later sections come from the Python lab prototype and two Swift timing tools, which the engine was built from.
 
 ## Setup
 
@@ -12,6 +12,82 @@ Every number Anemone quotes, with how it was measured, all from 2026-10-23. The 
 - GPU baseline: MLX with 4-bit affine weights, group 64, for both the target and the drafter.
 
 Numbers from different macOS versions are not comparable; rerun both sides on the same Mac.
+
+## Trees, GPU baselines and energy (2026-10-24 night)
+
+M3 Pro 18 GB, macOS 27.0.1 (26A434), AC power. Model folders exported with `--context 4096` from the published GPTQ weights.
+
+### Token trees
+
+The tree drafter is the same DSpark drafter exported with its runner-up token at each of the 7 steps. The engine puts the likeliest runner-ups (by the drafter's confidences) as one-token side branches into the rows of the width-16 check that the chain leaves free. Chain and tree runs alternated, `anemone bench --only speculative`:
+
+| drafter | run 1 | run 2 | accepted per cycle | draft ms | verify ms | lossless |
+|---|---|---|---|---|---|---|
+| chain (the published folder) | 44.0 | 43.9 | 2.84 | 21.8 | 64.3 | 6/6 |
+| **tree** | **46.0** | **45.6** | **3.01** | **21.3** | **64.4** | **6/6** |
+
+Same verify width, so the check costs the same; the 6% higher acceptance is a 4% speedup.
+
+### GPU baselines
+
+The GPU side from a public implementation: [mlx-dspark](https://github.com/ARahim3/mlx-dspark) 0.20.3 (mlx 0.32.4, mlx-lm 0.32.2), target `mlx-community/Qwen3-8B-4bit`, the same DSpark drafter, run with its defaults (its cap choice of 7, small-M verify kernel, hybrid n-gram drafts) through the lab script `e15_gpu_baselines.py` on the 6 bench prompts, thinking off, greedy, 256 tokens (tokens past 256 dropped before counting).
+
+| engine | math | code | explain | summary | advice | translate | mean, two runs | equal to plain greedy |
+|---|---|---|---|---|---|---|---|---|
+| MLX 4-bit plain | 30.0 | 30.1 | 30.3 | 30.2 | 30.2 | 30.8 | 30.3 / 30.4 | 6/6 |
+| mlx-dspark | 79.7 / 94.9 | 96.7 / 98.3 | 48.6 / 49.4 | 57.7 / 58.3 | 51.7 / 52.6 | 28.0 / 27.9 | 60.4 / 63.6 | 2/6 |
+| **Anemone, tree** | **74.3** | **69.3** | **44.7** | **33.9** | **36.5** | **16.8** | **45.9** | **6/6** |
+
+- mlx-dspark's cost curve on this Mac (from its own calibration cache): 48.9 ms to check 8 rows, 11.7 ms to draft 7 tokens, about 61 ms per round. Anemone: 64.4 ms to check 16 rows on the ANE, 21.3 ms to draft, 86 ms per cycle. Tokens per cycle are similar; the cycle time is the gap.
+- mlx-dspark's answers drift from MLX plain greedy on 4 of 6 prompts, first at tokens 24, 109, 126 and 173.
+- Our earlier MLX + DSpark row (32.2 tokens/s) came from the lab's own MLX loop, which checked 16 rows with stock kernels. It is kept below as a lab result but is not a fair GPU baseline.
+
+### Qwen3-4B
+
+Converted with the stock converter (see [Converting a model](convert.md#qwen3-4b)), two 18-layer chunks, its own DSpark drafter (chain).
+
+| engine | math | code | explain | summary | advice | translate | mean | equal to plain greedy |
+|---|---|---|---|---|---|---|---|---|
+| MLX 4-bit plain | 54.3 | 54.1 | 54.1 | 54.1 | 54.0 | 55.3 | 54.3 / 53.9 | 6/6 |
+| mlx-dspark | 147.9 | 126.8 | 82.8 | 71.0 | 84.7 | 52.2 | 94.3 / 94.8 | 2/6 |
+| **Anemone** | **127.3** | **96.0** | **63.8** | **55.4** | **66.5** | **34.7** | **74.0** | **6/6** |
+
+- Anemone: verify 36.4 ms, draft 16.2 ms, accepted 2.97 per cycle; plain 28.8 tokens/s.
+- Energy, two rounds: Anemone 0.303 / 0.305 J/token at 19.6 W; mlx-dspark 0.430 / 0.423 at 33.9 / 33.1 W; MLX plain 0.640 / 0.638 at 31.1 / 30.9 W.
+- Quality against bf16 Qwen3-4B (e07, simulated): docs KL 0.077, top-1 0.891; chat KL 0.112, top-1 0.915. MLX 4-bit: 0.095 / 0.875 and 0.107 / 0.917.
+
+### Energy
+
+`e13_swift_energy.py` around `anemone bench` and `e15_gpu_baselines.py --power` for MLX, one after another, two rounds. Whole-system SMC power over the generation window including prefill.
+
+| engine | tok/s with prefill | system W | GPU W | J/token |
+|---|---|---|---|---|
+| **Anemone, tree folder** | **45.8 / 45.8** | **20.8 / 20.8** | **1.0 / 0.9** | **0.488 / 0.488** |
+| Anemone, published folder (chain) | 43.7 / 43.3 | 21.5 / 20.7 | 1.0 / 0.9 | 0.527 / 0.510 |
+| mlx-dspark | 58.0 / 59.5 | 38.2 / 37.8 | 14.1 / 14.6 | 0.720 / 0.697 |
+| MLX 4-bit plain | 29.4 / 29.4 | 33.8 / 33.8 | 10.9 / 11.0 | 1.203 / 1.203 |
+| Anemone plain | 16.2 / 16.2 | 17.4 / 17.4 | 0.0 / 0.0 | 1.102 / 1.099 |
+
+```math
+E = \frac{\bar{P}\,(t + \tau)}{N}
+```
+
+- $\bar{P}$: mean system power over the window, $t$: generation time, $\tau$ = 2 s of sensor lag, $N$: tokens generated.
+- Example, Anemone tree round 1: $20.77 \times (26.72 + 2) / 1224 = 0.487$ J.
+
+### Drafter cost
+
+`anebench` times one drafter call alone on the GPU (zero inputs, 50 runs, median, one cache of 1088 slots):
+
+| weights | ms per call |
+|---|---|
+| **int4, blocks of 32 (shipped)** | **16.3** |
+| int4, blocks of 128 | 15.9 |
+| int8 per channel | 41.9 |
+| fp16 | 38.0 |
+
+- The same call after idle gaps: 16.0 ms back to back, 24.9 ms after 20 ms idle, 32 to 37 ms after 64 ms idle. In the engine the GPU idles through each 64 ms ANE check, and the draft takes 21 ms.
+- Keeping the GPU awake with a tiny dispatch every 2 to 5 ms during the check cuts the draft to 17 to 19.5 ms and raises speed 2% to 5%, but adds 2.3 W, so energy per token gets 9% worse (0.48 -> 0.52 J). Anemone does not do it.
 
 ## Swift engine (`anemone bench`)
 

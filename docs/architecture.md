@@ -42,7 +42,7 @@ sequenceDiagram
     end
 ```
 
-- One cycle costs 20.6 ms of drafting and 62.3 ms of verifying in the Swift engine (`anemone bench` mean), plus about 0.1 ms on the CPU.
+- One cycle costs 21.3 ms of drafting and 64.4 ms of verifying in the Swift engine (`anemone bench` mean, 4096-context tree folder), plus about 0.1 ms on the CPU.
 - A guess is kept only if it equals the 8B's top choice at that position, so the output is identical to plain greedy decoding. `anemone bench` checks this token for token on every prompt.
 - The token after the last kept guess comes free from the same verify call, so each cycle yields at least one token.
 
@@ -53,19 +53,19 @@ sequenceDiagram
 - Each chunk has one function per (context rung, call width) pair: widths 8, 16, 32 and 64, rungs from 256 doubling up to the export's context (1024 or 4096). All rungs share one KV buffer laid out for the largest; a smaller rung binds a prefix view of it, and each call uses the smallest rung that holds it.
 - The attention mask and the positions are inputs. Chains, token trees and replays all run on the same functions without a new export.
 - The KV cache stays on the ANE. A write must start at a position that is a multiple of 4, so a call replays up to 3 earlier tokens. Last token, 7 guesses and up to 3 replays fit in width 16.
-- The four chunks are chained with Core AI `encode`, which the Swift timing tool measured at the same cost as `run`. No CPU round trip between chunks.
+- The four chunks run one after another with Core AI `run`. The Swift timing tool measured `encode` chaining at the same cost, so the engine keeps `run`.
 
 ## The drafter
 
 - DSpark block 7 from DeepSeek: 5 transformer layers that read the 8B's hidden states at layers 1, 9, 17, 25 and 33.
 - A markov head adds a low-rank next-token correction to each guess. A confidence head estimates the chance each guess is accepted.
-- It runs as one Core AI program on the GPU with two entry points over the same weights. `main` adds the hidden states of the newly accepted tokens (up to 8 rows) to its context, drafts the 7 guesses and emits the 16-row input of the next ANE verify. `inject` only adds prompt hidden states, 64 rows per call in 7.1 ms, so a long prompt reaches the drafter in a fraction of a second.
+- It runs as one Core AI program on the GPU with two entry points over the same weights. `main` adds the hidden states of the newly accepted tokens (up to 8 rows) to its context, drafts the 7 guesses with the runner-up at each step, and also emits the embedded 16-row input of the next ANE verify. The engine does not use that output yet; it embeds the verify rows on the CPU. `inject` only adds prompt hidden states, 64 rows per call in 7.1 ms, so a long prompt reaches the drafter in a fraction of a second.
 - All shapes are fixed: positions, counts and offsets are inputs, and attention reads the whole cache through a mask. Changing shapes made Core AI recompile on every call (about 350 ms each).
-- Chained with `encode`, draft plus verify takes 83.7 ms per cycle, against 87.4 ms when each call waits for the last. MLX was measured as the alternative: same acceptance, no faster cycle, and a second runtime to ship. See [Benchmarks](benchmarks.md#drafter-runtime).
+- In the lab timing tool, draft plus verify chained with `encode` takes 83.7 ms per cycle, against 87.4 ms when each call waits for the last. The engine still waits for each call. MLX was measured as the alternative: same acceptance, no faster cycle, and a second runtime to ship. See [Benchmarks](benchmarks.md#drafter-runtime).
 
-## Trees and confidence scheduling (planned)
+## Trees (built) and confidence scheduling (planned)
 
-A width-16 call has room for more than one chain of guesses. The free slots hold second-choice branches, placed where they are most likely to pay off (formula in [Math](math.md#token-trees)).
+A width-16 call has room for more than one chain of guesses. The engine fills the free slots with the drafter's runner-up tokens as one-token side branches, at the depths where the chain is most likely to miss (formula in [Math](math.md#token-trees)). This is 4% faster than the chain alone (45.9 vs 44.0 tokens/s, [Benchmarks](benchmarks.md#token-trees)). Choosing chain, a wider tree or no draft per cycle from the confidences is planned:
 
 ```mermaid
 flowchart TD
