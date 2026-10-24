@@ -152,6 +152,7 @@ Details: [Architecture](docs/architecture.md) and [Math](docs/math.md).
 - Calibration on the model's own chat answers. Adding the model's replies to 16 unrelated prompts lowered chat KL from 0.139 to 0.086.
 - The drafter as one Core AI GPU program. It adds the 8B's hidden states to its context, drafts 7 tokens and emits the embedded input for the next ANE check in one call, with fixed shapes so nothing recompiles.
 - One KV cache for every context size. Each call uses the smallest context the conversation fits in, which is faster at short context.
+- Row-wise attention for long context. Apple's attention for the ANE transposes the scores so the context sits on the channel axis, and at 8192 that makes a chunk 2.1x slower than at 4096. One last-axis softmax per KV group gives the same result (within 6e-7) at 1.5x.
 
 ## Converting a model
 
