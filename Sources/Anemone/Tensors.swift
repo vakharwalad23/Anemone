@@ -1,6 +1,17 @@
 import CoreAI
+import Foundation
 
 /// Elements of an NDArray in logical row-major order, whatever its strides.
+/// Loads a Core AI program, naming the fix when its compiled copy in the cache is unusable.
+func loadProgram(_ url: URL, on unit: ComputeUnitKind) async throws -> AIModel {
+    do {
+        return try await AIModel(contentsOf: url, options: SpecializationOptions(preferredComputeUnitKind: unit))
+    } catch where "\(error)" == "nilError" {
+        // Core AI returns nil, not an error, for cache entries written before a crash or restart (seen 2026-10-25)
+        throw AnemoneError.staleCompileCache
+    }
+}
+
 func scalars<T: BitwiseCopyable>(_ array: NDArray, as type: T.Type) -> [T] {
     array.view(as: type).withUnsafePointer { pointer, shape, strides in
         let dims = Array(shape.indices.map { shape[$0] })

@@ -49,7 +49,7 @@ final class Drafter {
 
     /// Loads every cache size the program has (`main_<slots>`, or a single `main` in older folders).
     static func load(_ url: URL) async throws -> Drafter {
-        let model = try await AIModel(contentsOf: url, options: SpecializationOptions(preferredComputeUnitKind: .gpu))
+        let model = try await loadProgram(url, on: .gpu)
         var caches: [DrafterCache] = []
         for name in model.functionNames where name == "main" || name.hasPrefix("main_") {
             guard let main = try model.loadFunction(named: name) else { continue }

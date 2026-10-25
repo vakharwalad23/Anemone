@@ -83,3 +83,11 @@ rm -rf ~/.cache/huggingface/hub/models--vakharwalad23--Qwen3-8B-Anemone
 rm -rf ~/Library/Caches/coreai-cache/*/anemone
 rm -rf ~/Library/Caches/anemone ~/Library/HTTPStorages/anemone
 ```
+
+## If a model stops loading after a crash or restart
+
+On 2026-10-25, after the Mac crashed, every model compiled before the crash failed to load: Core AI returned nothing for its cached copies instead of compiling again. Anemone now stops with a message that names the cache. Removing it makes the next load compile from scratch (minutes per model, see above):
+
+```sh
+rm -rf ~/Library/Caches/coreai-cache/*/anemone
+```

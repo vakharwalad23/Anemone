@@ -60,10 +60,9 @@ final class AneTarget {
 
     static func load(_ folder: ModelFolder) async throws -> AneTarget {
         let config = folder.config
-        let options = SpecializationOptions(preferredComputeUnitKind: .neuralEngine)
         var chunks: [AneChunk] = []
         for (index, name) in config.chunks.enumerated() {
-            let model = try await AIModel(contentsOf: folder.file(name), options: options)
+            let model = try await loadProgram(folder.file(name), on: .neuralEngine)
             chunks.append(try AneChunk(model: model, output: index == config.chunks.count - 1 ? "out_tokens" : "hidden"))
         }
         let embeddings = try Embeddings(url: folder.file(config.embeddings), hiddenSize: config.hiddenSize, vocabSize: config.vocabSize)
