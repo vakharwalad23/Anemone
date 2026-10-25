@@ -88,13 +88,15 @@ rm -rf ~/Library/Caches/anemone ~/Library/HTTPStorages/anemone
 
 Sometimes Core AI returns nothing for a cached compiled program instead of compiling it again. Anemone then deletes that program's cache entry (`~/Library/Caches/coreai-cache/<macOS build>/anemone/<main.hash in hex>`) and loads it once more, which compiles it from scratch: 771 s for an 8B and 1309 s for the 14B on an M3 Pro, then 6 to 20 s on later loads.
 
-What we saw on 2026-10-25 (M3 Pro 18 GB, macOS 26A434), with the disk between 6 and 24 GB free all day:
+Keep free disk space: compiling a model takes about 2.5x the size of its `.aimodel` files, because macOS keeps a second copy for the Neural Engine outside this cache. The 4B, 8B and 14B together (15.6 GB of programs) took 39 GB; the 14B alone took 25.6 GB at the peak of its compile and 22.6 GB after (8.6 GB of it in the Core AI cache).
 
-- After a crash, every compiled model went stale.
-- Without a crash, compiling one model often made others stale: right after the 14B compiled, the 8B compiled just before it no longer loaded. Yet right after the 16384 folder compiled, the 8192 folder from four hours earlier still loaded in 12 s, while the 14B compiled between them did not.
-- Rebuilding Anemone and moving a model folder do not cause it.
+What we saw on 2026-10-25 (M3 Pro 18 GB, macOS 26A434):
 
-The cause is not known; low disk space making macOS purge the Neural Engine's own cache is one candidate we have not tested. Expect a full compile when you switch between several large models. If a load still fails after the automatic retry, Anemone stops with a message; removing the whole cache makes every model compile again on its next load:
+- With 6 to 24 GB free all day, compiled models kept going stale: right after the 14B compiled, the 8B compiled just before it no longer loaded. After a crash, every compiled model went stale.
+- With 60 GB free, the 4B, an 8B and the 14B compiled one after another, and all three then loaded from the cache in 8 to 15 s.
+- Rebuilding Anemone and moving a model folder do not make a model stale.
+
+Our reading: when the disk runs low, macOS purges the Neural Engine's copy, and Core AI returns nothing for the entry that is left. That fits both runs and the disk accounting, but we could not watch it happen. If a load still fails after the automatic retry, Anemone stops with a message; removing the whole cache makes every model compile again on its next load:
 
 ```sh
 rm -rf ~/Library/Caches/coreai-cache/*/anemone
