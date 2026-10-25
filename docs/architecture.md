@@ -51,6 +51,7 @@ sequenceDiagram
 - Qwen3-8B has 36 layers. It is split into four chunks of 9 layers. The last chunk also holds the final norm, the 151936-wide output layer and the argmax, so only token ids and hidden states leave the ANE.
 - Weights are 4-bit lookup tables: 16 values per group of 32 output rows. Chunks are 880 MB each, 1.2 GB for the last.
 - Each chunk has one function per (context rung, call width) pair: widths 8, 16, 32 and 64, rungs from 256 doubling up to the export's context (1024 or 4096). All rungs share one KV buffer laid out for the largest; a smaller rung binds a prefix view of it, and each call uses the smallest rung that holds it.
+- Every layer keeps the tokens on the width axis of its convolutions. Apple's iOS MLP puts them on the batch axis, and for Qwen3-14B the ANE then ran the MLP once per token (a layer took 64.3 ms at width 32 instead of 3.1). The converter's MLP transposes like Apple's attention does.
 - The attention mask and the positions are inputs. Chains, token trees and replays all run on the same functions without a new export.
 - The KV cache stays on the ANE. A write must start at a position that is a multiple of 4, so a call replays up to 3 earlier tokens. Last token, 7 guesses and up to 3 replays fit in width 16.
 - The four chunks run one after another with Core AI `run`. The Swift timing tool measured `encode` chaining at the same cost, so the engine keeps `run`.
@@ -104,5 +105,5 @@ flowchart LR
 ## Limits today
 
 - Greedy decoding only, one request at a time.
-- Context: up to 4096 tokens in the default export, 8192 with `--context 8192`. Above 4096 the chunks use row-wise attention (one last-axis softmax per KV group); Apple's attention transposes the scores and makes a chunk 3.1x slower at 8192 than at 1024.
+- Context: up to 4096 tokens in the default export, 8192 or 16384 with `--context`. Above 4096 the chunks use row-wise attention (one last-axis softmax per KV group); Apple's attention transposes the scores and makes a chunk 3.1x slower at 8192 than at 1024.
 - macOS 27 only. Tested on M3 Pro only.
