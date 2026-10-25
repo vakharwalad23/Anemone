@@ -2,7 +2,7 @@
 
 Build once with `swift build -c release`; the binary is `.build/release/anemone`. Every command takes `--model`, which is a model folder made by the converter or a Hugging Face repo id (`org/name`) to download into `~/.cache/anemone`. Without `--model`, `$ANEMONE_MODEL` is used.
 
-The first load of a model compiles it for the Neural Engine (about 7.5 minutes on an M3 Pro, 12 minutes for a 4096-context folder, 19 for 8192). macOS caches the result per executable, so later loads take a few seconds.
+The first load of a model compiles it for the Neural Engine (on an M3 Pro: 10 minutes for the 4B, 12 to 14 for an 8B with 4096 context, 19 to 23 for 8192 and 16384, 22 for the 14B). macOS caches the result per executable, so later loads take a few seconds, until the cache goes stale (see below).
 
 ## Commands
 
@@ -84,9 +84,17 @@ rm -rf ~/Library/Caches/coreai-cache/*/anemone
 rm -rf ~/Library/Caches/anemone ~/Library/HTTPStorages/anemone
 ```
 
-## If a model stops loading
+## When a model compiles again
 
-Sometimes Core AI returns nothing for a cached compiled copy instead of compiling again, and the model no longer loads. On 2026-10-25 (M3 Pro, macOS 26A434) this hit every model compiled before a crash, and later, with no crash, two of four folders compiled on the same day; the other two kept loading in 12 s. Rebuilding Anemone does not cause it: a new build loaded the cached 16384-context folder in 12.1 s. The cause is not known yet. Anemone stops with a message that names the cache. Removing it makes the next load of every model compile from scratch (minutes per model, see above):
+Sometimes Core AI returns nothing for a cached compiled program instead of compiling it again. Anemone then deletes that program's cache entry (`~/Library/Caches/coreai-cache/<macOS build>/anemone/<main.hash in hex>`) and loads it once more, which compiles it from scratch: 771 s for an 8B and 1309 s for the 14B on an M3 Pro, then 6 to 20 s on later loads.
+
+What we saw on 2026-10-25 (M3 Pro 18 GB, macOS 26A434), with the disk between 6 and 24 GB free all day:
+
+- After a crash, every compiled model went stale.
+- Without a crash, compiling one model often made others stale: right after the 14B compiled, the 8B compiled just before it no longer loaded. Yet right after the 16384 folder compiled, the 8192 folder from four hours earlier still loaded in 12 s, while the 14B compiled between them did not.
+- Rebuilding Anemone and moving a model folder do not cause it.
+
+The cause is not known; low disk space making macOS purge the Neural Engine's own cache is one candidate we have not tested. Expect a full compile when you switch between several large models. If a load still fails after the automatic retry, Anemone stops with a message; removing the whole cache makes every model compile again on its next load:
 
 ```sh
 rm -rf ~/Library/Caches/coreai-cache/*/anemone
