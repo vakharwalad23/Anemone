@@ -2,6 +2,7 @@
 .build/
 .swiftpm/
 DerivedData/
+.vscode/
 xcuserdata/
 *.xcodeproj/
 .venv/
