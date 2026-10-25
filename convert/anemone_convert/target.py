@@ -32,6 +32,7 @@ from torch import nn
 from transformers import PretrainedConfig, Qwen3Config
 
 from anemone_convert.attention import RowSDPA
+from anemone_convert.mlp import WidthMLP
 
 FUNCTION = "extend"
 INPUTS = (TRANSFORMER_INPUT_NAME, POSITION_IDS_INPUT_NAME, IN_STEP_INPUT_NAME, CAUSAL_MASK_INPUT_NAME)
@@ -114,6 +115,9 @@ class TargetChunk(nn.Module):
         # the checkpoint replaces every weight, so the random fp32 init (10 GB for a 14B chunk) is never allocated
         with torch.device("meta"):
             self.layers = nn.ModuleList(TransformerBlock(config, slot) for slot in range(end - start))
+            for layer in self.layers:
+                # Apple's MLP batches the tokens: a 14B layer took 16.8/33.4/64.3 ms at width 8/16/32, this one 3.0 ms flat (lab e20)
+                layer.mlp = WidthMLP(dim=config.hidden_size, hidden_dim=config.intermediate_size)
         if config.max_position_embeddings > ROW_ATTENTION_ABOVE:
             for layer in self.layers:
                 layer.self_attn.sdpa = RowSDPA(head_dim=config.head_dim)
