@@ -1,6 +1,6 @@
 # Converting a model
 
-The converter turns a Hugging Face checkpoint into an Anemone model folder. It is a Python project in `convert/` that runs through [uv](https://docs.astral.sh/uv/). Supported today: Qwen3-8B with the `deepseek-ai/dspark_qwen3_8b_block7` drafter, Qwen3-4B with `deepseek-ai/dspark_qwen3_4b_block7`, and DeepSeek-R1-0528-Qwen3-8B with the Qwen3-8B drafter (it accepts about half as many drafts on R1's thinking text).
+The converter turns a Hugging Face checkpoint into an Anemone model folder. It is a Python project in `convert/` that runs through [uv](https://docs.astral.sh/uv/). Supported today: Qwen3-8B with the `deepseek-ai/dspark_qwen3_8b_block7` drafter, Qwen3-4B with `deepseek-ai/dspark_qwen3_4b_block7`, Qwen3-14B with `deepseek-ai/dspark_qwen3_14b_block7`, and DeepSeek-R1-0528-Qwen3-8B with the Qwen3-8B drafter (it accepts about half as many drafts on R1's thinking text).
 
 ```mermaid
 flowchart LR
@@ -35,6 +35,7 @@ uv run --project convert anemone-convert package --chunks work/qwen3-8b-chunks -
 - `quantize` calibrates on six Python standard library files, five machine-learning library modules from its own environment (transformers, torch, huggingface_hub) and the model's own answers to 16 chat prompts. It writes those answers with the MLX copy of the model, so the first run downloads `mlx-community/Qwen3-8B-4bit` (4.6 GB). Pass `--chat-calibration answers.json` to reuse a saved set.
 - `--context` defaults to 4096 (rungs 256 to 4096). Short conversations still use the small rungs and the drafter's small cache, so speed at short context is the same as a 1024 export (45.0 vs 45.1 tokens/s). Pass `--context 1024` to both `target` and `drafter` for a folder that compiles faster on first load (414 s instead of 702 s).
 - `--context 8192` (to both `target` and `drafter`) builds rungs up to 8192 with row-wise attention, which keeps 8192 at 1.5x the cost of 4096 ([Benchmarks](benchmarks.md#long-context-one-chunk-width-16)). First load takes 1135 s.
+- `--context 16384` works the same way; first load takes 1353 s. At 10.9K tokens of context decoding drops to 10.6 tokens/s ([Benchmarks](benchmarks.md#16384-token-context)).
 - `drafter --context` must match the target's largest rung. The drafter gets one cache per size (1024 and the full context) and grows into the larger one, copying its KV, when a conversation passes 1024 tokens.
 - Downloads: the bf16 checkpoint is 16.4 GB. `package` hard-links the programs, so the folder costs only the 1.2 GB embedding table on top of the work directory.
 
@@ -69,6 +70,27 @@ uv run --project convert anemone-convert package --model deepseek-ai/DeepSeek-R1
 ```
 
 Quantize took 2245 s at 5.4 GB peak, the first load 714 s.
+
+## Qwen3-14B
+
+Eight 5-layer chunks, each near the size of an 8B chunk, and the 14B's own drafter.
+
+```sh
+uv run --project convert --extra export anemone-convert quantize --model Qwen/Qwen3-14B --chat-model mlx-community/Qwen3-14B-4bit --out work/qwen3-14b-lut4
+uv run --project convert --extra export anemone-convert target --checkpoint work/qwen3-14b-lut4 --drafter deepseek-ai/dspark_qwen3_14b_block7 --layers-per-chunk 5 --out work/qwen3-14b-chunks
+uv run --project convert --extra export anemone-convert drafter --drafter deepseek-ai/dspark_qwen3_14b_block7 --out work/drafter-14b.aimodel
+uv run --project convert anemone-convert package --model Qwen/Qwen3-14B --chunks work/qwen3-14b-chunks --drafter work/drafter-14b.aimodel --out models/qwen3-14b-4k
+```
+
+| step | time | peak memory |
+|---|---|---|
+| `quantize` | 4746 s | 5.3 GB |
+| `target` | 9 min | 11.9 GB |
+| `drafter` | not measured | 14.2 GB |
+| first load (ANE compile) | 1338 s | - |
+
+- The quantized checkpoint takes 26 GB of disk. On an 18 GB Mac close other apps for `target` and `drafter`.
+- The output layer is split into parts of at most 4096 inputs whose logits are summed: one 512-row slice of the 14B's 151936 x 5120 head failed to compile (`Kernel data too large`).
 
 ## The model folder
 
