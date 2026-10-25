@@ -182,7 +182,7 @@ Working today: Qwen3-4B, Qwen3-8B and Qwen3-14B (thinking off) and DeepSeek-R1-0
 Done:
 
 - Drafter runtime picked by measurement, Swift engine and CLI, converter, 4096-token context, OpenAI-compatible server.
-- Qwen3-8B published in the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face, updated 2026-10-25 with the converter's weights and the tree drafter.
+- Qwen3-4B, Qwen3-8B and Qwen3-14B published in the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face (2026-10-25), with the converter's weights and the tree drafter.
 - Qwen3-4B through the same converter with no code changes: 74.0 tokens/s, lossless, KL against bf16 0.077 (docs) and 0.112 (chat) vs 0.095 and 0.107 for MLX 4-bit.
 - Tree verify: side branches from the drafter's runner-up tokens fill the spare rows of each check, 4% faster than chains (45.9 vs 44.0 tokens/s).
 - Converter calibration that does not favor one domain (docs KL 0.107 -> 0.059).
@@ -193,11 +193,10 @@ Done:
 
 Coming, in this order:
 
-1. Qwen3-4B and Qwen3-14B on Hugging Face (uploading).
-2. A faster draft: the drafter call takes 16 ms on a busy GPU but 21 ms after each ANE check.
-3. Longer context: 32K, and a faster prefill and decode for long prompts (at 10.9K tokens a check reads the whole KV cache).
-4. Fewer bytes per check. Core AI's palettizer offers 1, 2, 4 and 6 bits, not 3; whether 2-bit tables on a few layers keep the quality is untested.
-5. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
+1. A faster draft: the drafter call takes 16 ms on a busy GPU but 21 ms after each ANE check.
+2. Longer context: 32K, and a faster prefill and decode for long prompts (at 10.9K tokens a check reads the whole KV cache).
+3. Fewer bytes per check. Core AI's palettizer offers 1, 2, 4 and 6 bits, not 3; whether 2-bit tables on a few layers keep the quality is untested.
+4. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
 
 ## Docs
 
