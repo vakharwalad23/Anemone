@@ -1,6 +1,6 @@
 # Benchmarks
 
-Every number Anemone quotes, with how it was measured, from 2026-10-23 and 2026-10-24. The first two sections are the Swift engine; the later sections come from the Python lab prototype and two Swift timing tools, which the engine was built from.
+Every number Anemone quotes, with how it was measured, from 2026-10-23 to 2026-10-25. The first three sections are the Swift engine; the later sections come from the Python lab prototype and two Swift timing tools, which the engine was built from.
 
 ## Setup
 
@@ -12,6 +12,51 @@ Every number Anemone quotes, with how it was measured, from 2026-10-23 and 2026-
 - GPU baseline: MLX with 4-bit affine weights, group 64, for both the target and the drafter.
 
 Numbers from different macOS versions are not comparable; rerun both sides on the same Mac.
+
+## Qwen3-14B, the MLP layout and 16K context (2026-10-25)
+
+M3 Pro 18 GB, macOS 27.0.1 (26A434), AC power.
+
+### Qwen3-14B
+
+Stock converter, eight 5-layer chunks (`--layers-per-chunk 5`), its own DSpark drafter (`deepseek-ai/dspark_qwen3_14b_block7`) with runner-up tokens. GPU rows: `e15_gpu_baselines.py` with `mlx-community/Qwen3-14B-4bit` (mlx-dspark picked cap 5).
+
+| engine | math | code | explain | summary | advice | translate | mean | equal to plain greedy |
+|---|---|---|---|---|---|---|---|---|
+| MLX 4-bit plain | 16.8 | 16.7 | 16.7 | 16.8 | 16.7 | 16.9 | 16.8 | 6/6 |
+| mlx-dspark | 52.7 | 45.2 | 38.1 | 31.8 | 33.1 | 20.5 | 36.9 | 2/6 |
+| **Anemone** | **44.9** | **42.8** | **25.0** | **24.1** | **23.4** | **10.8** | **28.5** | **6/6** |
+
+- Anemone: verify 118.5 ms, draft 23 ms, accepted 3.11 per cycle; plain 8.6 tokens/s; first load 1338 s.
+- Energy, one round each (e13 and e15 `--power`): Anemone 0.743 J/token at 19.8 W; mlx-dspark 1.167 at 39.9 W; MLX plain 2.054 at 32.7 W. Anemone uses 1.57x less energy than mlx-dspark at 0.77x its speed.
+- The quality check against bf16 (e07) has not been run for the 14B yet.
+
+### The MLP layout
+
+The first 14B export ran at 2.9 tokens/s (verify 1338 ms). One layer, exported alone and timed with the lab's `anebench` at context rung 256 (median of 30 calls, ms per call):
+
+| one layer | width 8 | width 16 | width 32 | width 64 |
+|---|---|---|---|---|
+| Qwen3-8B, Apple's MLP | 2.13 | 1.80 | 1.92 | 2.12 |
+| Qwen3-8B, tokens on the width axis | 2.32 | 1.83 | 1.84 | 2.06 |
+| Qwen3-14B, Apple's MLP | 16.77 | 33.41 | 64.25 | - |
+| Qwen3-14B, attention only | 2.83 | 0.84 | 0.90 | - |
+| **Qwen3-14B, tokens on the width axis** | **2.98** | **3.00** | **3.06** | **5.83** |
+
+- The 8B width-64 cell with Apple's MLP is from back-to-back calls; single calls varied from 2.3 to 2.6 ms.
+- Apple's iOS MLP reshapes the tokens onto the convolution's batch axis. For the 14B's larger weights (45 MB per projection at 4 bits, against 25 MB in the 8B) the ANE then runs the MLP once per token, about 2.1 ms each. Attention keeps the tokens on the width axis and costs the same at every width.
+- The converter's MLP keeps the tokens on the width axis. Same weights and result (within 1.3e-7 in fp32). The 14B layer compiles in 31 s instead of 229 s, and a full 14B chunk in about 2.6 minutes instead of 19.
+
+### 16384-token context
+
+The 8B exported with `--context 16384` (row-wise attention above 4096), with a drafter cache of the same size; first load 1353 s.
+
+| prompt | speculative | plain | prefill | equal to plain |
+|---|---|---|---|---|
+| bench prompts (short) | 47.3 | 16.1 | - | 6/6 |
+| one prompt of 10923 tokens, 256 out | 10.6 | 6.2 | 57.2 s | yes |
+
+- At 10.9K tokens every call reads the whole KV cache: about 2.6 ms per 1K tokens of context per chunk, so decoding is 4.5x slower than at short context.
 
 ## Trees, GPU baselines and energy (2026-10-24 night)
 
