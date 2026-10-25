@@ -19,7 +19,7 @@ final class AneChunk {
         for name in model.functionNames {
             let parts = name.split(separator: "_")
             guard parts.count == 3, parts[0] == "extend", let rung = Int(parts[1]), let width = Int(parts[2]),
-                let function = try model.loadFunction(named: name)
+                let function = try loadFunction(model, named: name)
             else { continue }
             functions[rung, default: [:]][width] = function
         }

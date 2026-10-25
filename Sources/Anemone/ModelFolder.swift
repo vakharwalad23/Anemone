@@ -55,7 +55,7 @@ public enum AnemoneError: Error, CustomStringConvertible {
         case .badEmbeddings(let reason): "embedding table: \(reason)"
         case .notAModelFolder(let path): "\(path) is not an Anemone model folder (no anemone.json); make one with the converter"
         case .staleCompileCache:
-            "Core AI could not use its compiled copy of this model, which happens after a crash or restart. Remove "
+            "Core AI could not use its compiled copy of this model (seen after a crash and for some older cache entries). Remove "
                 + "~/Library/Caches/coreai-cache/<macOS build>/<app name> (for the CLI: rm -rf ~/Library/Caches/coreai-cache/*/anemone) "
                 + "and load again; the next load compiles from scratch."
         }

@@ -84,9 +84,9 @@ rm -rf ~/Library/Caches/coreai-cache/*/anemone
 rm -rf ~/Library/Caches/anemone ~/Library/HTTPStorages/anemone
 ```
 
-## If a model stops loading after a crash or restart
+## If a model stops loading
 
-On 2026-10-25, after the Mac crashed, every model compiled before the crash failed to load: Core AI returned nothing for its cached copies instead of compiling again. Anemone now stops with a message that names the cache. Removing it makes the next load compile from scratch (minutes per model, see above):
+Sometimes Core AI returns nothing for a cached compiled copy instead of compiling again, and the model no longer loads. On 2026-10-25 (M3 Pro, macOS 26A434) this hit every model compiled before a crash, and later, with no crash, two of four folders compiled on the same day; the other two kept loading in 12 s. Rebuilding Anemone does not cause it: a new build loaded the cached 16384-context folder in 12.1 s. The cause is not known yet. Anemone stops with a message that names the cache. Removing it makes the next load of every model compile from scratch (minutes per model, see above):
 
 ```sh
 rm -rf ~/Library/Caches/coreai-cache/*/anemone
