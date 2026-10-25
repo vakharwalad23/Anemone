@@ -49,12 +49,14 @@ final class Drafter {
 
     /// Loads every cache size the program has (`main_<slots>`, or a single `main` in older folders).
     static func load(_ url: URL) async throws -> Drafter {
-        let model = try await loadProgram(url, on: .gpu)
-        var caches: [DrafterCache] = []
-        for name in model.functionNames where name == "main" || name.hasPrefix("main_") {
-            guard let main = try loadFunction(model, named: name) else { continue }
-            // folders converted before the inject entry point existed still work, injecting 8 rows at a time
-            caches.append(try DrafterCache(main: main, inject: try loadFunction(model, named: "inject" + name.dropFirst("main".count))))
+        let caches = try await loadProgram(url, on: .gpu) { model in
+            var caches: [DrafterCache] = []
+            for name in model.functionNames where name == "main" || name.hasPrefix("main_") {
+                guard let main = try model.loadFunction(named: name) else { continue }
+                // folders converted before the inject entry point existed still work, injecting 8 rows at a time
+                caches.append(try DrafterCache(main: main, inject: try model.loadFunction(named: "inject" + name.dropFirst("main".count))))
+            }
+            return caches
         }
         guard !caches.isEmpty else { throw AnemoneError.missingFunction("main") }
         let drafter = try Drafter(caches: caches.sorted { $0.slots < $1.slots })

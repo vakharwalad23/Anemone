@@ -19,7 +19,7 @@ final class AneChunk {
         for name in model.functionNames {
             let parts = name.split(separator: "_")
             guard parts.count == 3, parts[0] == "extend", let rung = Int(parts[1]), let width = Int(parts[2]),
-                let function = try loadFunction(model, named: name)
+                let function = try model.loadFunction(named: name)
             else { continue }
             functions[rung, default: [:]][width] = function
         }
@@ -62,8 +62,8 @@ final class AneTarget {
         let config = folder.config
         var chunks: [AneChunk] = []
         for (index, name) in config.chunks.enumerated() {
-            let model = try await loadProgram(folder.file(name), on: .neuralEngine)
-            chunks.append(try AneChunk(model: model, output: index == config.chunks.count - 1 ? "out_tokens" : "hidden"))
+            let output = index == config.chunks.count - 1 ? "out_tokens" : "hidden"
+            chunks.append(try await loadProgram(folder.file(name), on: .neuralEngine) { try AneChunk(model: $0, output: output) })
         }
         let embeddings = try Embeddings(url: folder.file(config.embeddings), hiddenSize: config.hiddenSize, vocabSize: config.vocabSize)
         let target = AneTarget(chunks: chunks, embeddings: embeddings)

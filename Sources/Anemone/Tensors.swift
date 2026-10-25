@@ -1,24 +1,4 @@
 import CoreAI
-import Foundation
-
-/// Loads a Core AI program, naming the fix when its compiled copy in the cache is unusable.
-func loadProgram(_ url: URL, on unit: ComputeUnitKind) async throws -> AIModel {
-    do {
-        return try await AIModel(contentsOf: url, options: SpecializationOptions(preferredComputeUnitKind: unit))
-    } catch where "\(error)" == "nilError" {
-        throw AnemoneError.staleCompileCache
-    }
-}
-
-/// Loads one function of a program; a stale cache entry loads as a program and fails here.
-func loadFunction(_ model: AIModel, named name: String) throws -> InferenceFunction? {
-    do {
-        return try model.loadFunction(named: name)
-    } catch where "\(error)" == "nilError" {
-        // Core AI returns nil, not an error, for cache entries it can no longer use (seen 2026-10-25 after a restart and on hours-old entries)
-        throw AnemoneError.staleCompileCache
-    }
-}
 
 /// Elements of an NDArray in logical row-major order, whatever its strides.
 func scalars<T: BitwiseCopyable>(_ array: NDArray, as type: T.Type) -> [T] {
