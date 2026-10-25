@@ -28,7 +28,7 @@ Qwen3-8B, thinking off, greedy decoding, 6 prompts x 256 tokens. M3 Pro 18 GB, m
 
 - mlx-dspark is 1.35x faster. Anemone uses 1.45x less energy per token at 55% of the power, and its GPU draws about 1 W, so the GPU stays free for other work.
 - mlx-dspark's answers drift from plain greedy decoding after 24 to 173 tokens on 4 of the 6 prompts (its batched check rounds differently). Anemone's match on every prompt.
-- The Hugging Face folder still has the chain drafter: 44.0 tokens/s and 0.51 to 0.53 J per token. The tree drafter is in the next upload.
+- The Hugging Face folder was updated on 2026-10-25 (converter weights, tree drafter, the width-axis MLP): 47.3 tokens/s and 0.47 J per token, lossless 6/6.
 
 Qwen3-4B, same setup and night:
 
@@ -52,11 +52,12 @@ The 4-bit weights are also closer to the original model than MLX 4-bit (KL again
 
 | 4-bit weights | KL, docs | KL, chat | top-1, docs | top-1, chat |
 |---|---|---|---|---|
-| **Anemone (GPTQ onto ANE lookup tables)** | **0.047** | **0.086** | **0.892** | **0.919** |
+| **Anemone, the Hugging Face folder (converter calibration)** | **0.059** | **0.076** | **0.887** | **0.915** |
+| Anemone, lab calibration (the first upload) | 0.047 | 0.086 | 0.892 | 0.919 |
 | MLX 4-bit affine, group 64 | 0.085 | 0.086 | 0.870 | 0.902 |
 | Core AI default palettizer | 0.341 | 0.371 | 0.767 | 0.825 |
 
-The docs set (four files from one code repo) shares a domain with the text these weights were calibrated on, so its 0.047 is optimistic. The converter's default calibration (Python standard library, five machine-learning library modules and the model's own chat answers, nothing from the docs repo) scores 0.059 on docs and 0.076 on chat in simulation, lower than MLX on both.
+Both Anemone rows are GPTQ onto the ANE lookup tables. The converter calibrates on the Python standard library, five machine-learning library modules and the model's own chat answers, nothing from the docs repo; its numbers come from the simulator, which matched the ANE within 0.004 KL. The lab calibration shared a domain with the docs set (four files from one code repo), so its 0.047 is optimistic. Qwen3-4B and Qwen3-14B: closer than MLX on docs KL and top-1, slightly behind on chat KL ([Benchmarks](docs/benchmarks.md#qwen3-14b)).
 
 ## How it compares
 
@@ -99,7 +100,7 @@ export ANEMONE_MODEL=vakharwalad23/Qwen3-8B-Anemone
 .build/release/anemone run "Explain how a CPU cache works."
 ```
 
-The first run downloads the model folder from [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone) (6 GB) and compiles it for the ANE, about 12 minutes on an M3 Pro. macOS caches the result per app, so later runs start in a few seconds.
+The first run downloads the model folder from [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone) (6 GB) and compiles it for the ANE, 12 to 14 minutes on an M3 Pro. Leave about 20 GB free: the compiled copies take about 12 GB, and with too little free disk macOS seems to drop the Neural Engine's copy, which costs a recompile ([Usage](docs/usage.md#when-a-model-compiles-again)). macOS caches the result per app, so later runs start in a few seconds.
 
 ```sh
 .build/release/anemone chat
@@ -181,7 +182,7 @@ Working today: Qwen3-4B, Qwen3-8B and Qwen3-14B (thinking off) and DeepSeek-R1-0
 Done:
 
 - Drafter runtime picked by measurement, Swift engine and CLI, converter, 4096-token context, OpenAI-compatible server.
-- Qwen3-8B published on [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone).
+- Qwen3-8B published on [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone), updated 2026-10-25 with the converter's weights and the tree drafter.
 - Qwen3-4B through the same converter with no code changes: 74.0 tokens/s, lossless, KL against bf16 0.077 (docs) and 0.112 (chat) vs 0.095 and 0.107 for MLX 4-bit.
 - Tree verify: side branches from the drafter's runner-up tokens fill the spare rows of each check, 4% faster than chains (45.9 vs 44.0 tokens/s).
 - Converter calibration that does not favor one domain (docs KL 0.107 -> 0.059).
@@ -192,7 +193,7 @@ Done:
 
 Coming, in this order:
 
-1. Qwen3-4B, Qwen3-14B and the updated Qwen3-8B on Hugging Face (uploading).
+1. Qwen3-4B and Qwen3-14B on Hugging Face (uploading).
 2. A faster draft: the drafter call takes 16 ms on a busy GPU but 21 ms after each ANE check.
 3. Longer context: 32K, and a faster prefill and decode for long prompts (at 10.9K tokens a check reads the whole KV cache).
 4. Fewer bytes per check. Core AI's palettizer offers 1, 2, 4 and 6 bits, not 3; whether 2-bit tables on a few layers keep the quality is untested.
