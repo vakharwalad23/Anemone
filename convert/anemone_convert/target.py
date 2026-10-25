@@ -16,7 +16,6 @@ from coreai_models._constants import (
     VALUE_CACHE_INPUT_NAME,
     VALUE_CACHE_OUTPUT_NAME,
 )
-from coreai_models.export.compression import palettize_pytorch_model
 from coreai_models.export.mlir_ops import register_custom_torch_lowering, remove_functionalization
 from coreai_models.export.presets import get_preset
 from coreai_models.models.base import BaseForCausalLMForiOS
@@ -24,6 +23,9 @@ from coreai_models.models.ios.qwen3 import TransformerBlock
 from coreai_models.primitives.ios.cache import KVCacheHandler
 from coreai_models.primitives.ios.rms_norm import RMSNorm
 from coreai_models.primitives.ios.rope import RoPECache
+from coreai_opt.base_model_compressor import ExportBackend
+from coreai_opt.palettization.config.palettization_config import KMeansPalettizerConfig
+from coreai_opt.palettization.kmeans import KMeansPalettizer
 from coreai_torch import TorchConverter
 from safetensors import safe_open
 from torch import nn
@@ -45,6 +47,10 @@ TRACE_WIDTH = 8
 LAYERS_PER_CHUNK = 9
 # Apple's SDPA is 3% faster up to here; at 8192 it costs 46 ms per chunk against 31 for RowSDPA (lab e20)
 ROW_ATTENTION_ABOVE = 4096
+# the ANE compiler fails with "Kernel data too large" on a 4-bit head slice of 512 rows x 5120 inputs; 4096 compiles
+HEAD_INPUTS_PER_PART = 4096
+# coreai_models' palettize_pytorch_model forks 32 workers (12.8 GB for a 14B chunk); the weights already hold their values
+PALETTIZE_WORKERS = 4
 
 
 def inverse_frequencies(config: PretrainedConfig) -> tuple[torch.Tensor, float]:
@@ -105,7 +111,9 @@ class TargetChunk(nn.Module):
         self.start, self.end = start, end
         self.is_last = end == config.num_hidden_layers
         self.tap_slots = [layer - start for layer in taps if start <= layer < end]
-        self.layers = nn.ModuleList(TransformerBlock(config, slot) for slot in range(end - start))
+        # the checkpoint replaces every weight, so the random fp32 init (10 GB for a 14B chunk) is never allocated
+        with torch.device("meta"):
+            self.layers = nn.ModuleList(TransformerBlock(config, slot) for slot in range(end - start))
         if config.max_position_embeddings > ROW_ATTENTION_ABOVE:
             for layer in self.layers:
                 layer.self_attn.sdpa = RowSDPA(head_dim=config.head_dim)
@@ -113,7 +121,9 @@ class TargetChunk(nn.Module):
         self.rope = ScaledRoPECache(config)
         if self.is_last:
             self.norm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-            self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+            parts = math.ceil(config.hidden_size / HEAD_INPUTS_PER_PART)
+            with torch.device("meta"):
+                self.lm_head = nn.ModuleList(nn.Linear(config.hidden_size // parts, config.vocab_size, bias=False) for _ in range(parts))
 
     @property
     def output_names(self) -> tuple[str, ...]:
@@ -137,8 +147,16 @@ class TargetChunk(nn.Module):
                 taps.append(h)
             h = layer(h, rope_cos, rope_sin, in_step, causal_mask, self.kv_cache)
         if self.is_last:
-            h = torch.argmax(self.lm_head(self.norm(h).transpose(-2, -3)), dim=-1).to(torch.int32)
+            h = torch.argmax(self.logits(self.norm(h).transpose(-2, -3)), dim=-1).to(torch.int32)
         return (h, torch.cat(taps, dim=-1)) if taps else (h,)
+
+    def logits(self, x: torch.Tensor) -> torch.Tensor:
+        """The output layer as one matmul per slice of its inputs, summed."""
+        inputs = x.chunk(len(self.lm_head), dim=-1)
+        logits = self.lm_head[0](inputs[0])
+        for head, part in zip(self.lm_head[1:], inputs[1:], strict=True):
+            logits = logits + head(part)
+        return logits
 
     def load_checkpoint(self, checkpoint: Path) -> None:
         names = {
@@ -147,13 +165,19 @@ class TargetChunk(nn.Module):
             for name, _ in self.layers[slot].named_parameters()
         }
         if self.is_last:
-            names |= {"norm.weight": "model.norm.weight", "lm_head.weight": head_name(checkpoint)}
-        tensors = read_tensors(checkpoint, list(names.values()))
+            names |= {"norm.weight": "model.norm.weight"}
+        tensors = read_tensors(checkpoint, list(names.values()) + ([head_name(checkpoint)] if self.is_last else []))
         state = {key: tensors[source] for key, source in names.items()}
+        if self.is_last:
+            for index, part in enumerate(tensors[head_name(checkpoint)].chunk(len(self.lm_head), dim=1)):
+                state[f"lm_head.{index}.weight"] = part.contiguous()
         for key, value in state.items():
             if key.split(".")[-2] in CONV_WEIGHTS:
                 state[key] = value[..., None, None]
         self.load_state_dict(state, strict=False, assign=True)
+        missing = [name for name, tensor in [*self.named_parameters(), *self.named_buffers()] if tensor.is_meta]
+        if missing:
+            raise ValueError(f"not in the checkpoint: {missing}")
 
     def reference_inputs(self) -> dict[str, torch.Tensor]:
         context = self.config.max_position_embeddings
@@ -200,6 +224,13 @@ def palettization_config(scheme: dict) -> dict:
     # weights already hold at most 2**bits values per group, so exact clustering just recovers them
     global_config = {"op_state_spec": {"weight": weight}, "enable_fast_kmeans_mode": False}
     return {"global_config": global_config, "module_type_configs": preset["module_type_configs"]}
+
+
+def palettize(chunk: TargetChunk, scheme: dict) -> nn.Module:
+    """Snap the chunk's linear layers onto the lookup tables its checkpoint already holds."""
+    palettizer = KMeansPalettizer(chunk, KMeansPalettizerConfig.from_dict({"kmeans_palettization_config": palettization_config(scheme)}))
+    prepared = palettizer.prepare(example_inputs=tuple(chunk.reference_inputs().values()), num_workers=PALETTIZE_WORKERS)
+    return palettizer.finalize(prepared, backend=ExportBackend.CoreAI)
 
 
 def to_program(chunk: TargetChunk) -> AIProgram:
@@ -249,7 +280,7 @@ def export_target(checkpoint: Path, taps: list[int], context: int, out: Path, la
         chunk = TargetChunk(config, start, end, taps)
         chunk.load_checkpoint(checkpoint)
         chunk = chunk.to(torch.float16).eval()
-        chunk = palettize_pytorch_model(chunk, tuple(chunk.reference_inputs().values()), palettization_config(scheme))
+        chunk = palettize(chunk, scheme)
         path = out / f"chunk-{start:02d}-{end:02d}.aimodel"
         to_program(chunk).save_asset(path, None)
         paths.append(path)
