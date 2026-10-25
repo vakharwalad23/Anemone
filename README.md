@@ -188,11 +188,11 @@ Done:
 - Independent GPU baseline (mlx-dspark) and energy of the 4096-context folder, measured the same night.
 - 8192-token context: the cliff at 8192 was Apple's attention transposing the scores; row-wise attention brings a chunk from 46.4 to 31.0 ms, and a 5449-token prompt decodes at 22.7 tokens/s, lossless.
 - 16384-token context: a 10923-token prompt decodes at 10.6 tokens/s (6.2 plain), lossless.
-- Qwen3-14B: 28.5 tokens/s at 0.74 J per token, lossless, after moving the MLP's tokens off the batch axis (it ran at 2.9 before). The quality check against bf16 is not run yet.
+- Qwen3-14B: 28.5 tokens/s at 0.74 J per token, lossless, after moving the MLP's tokens off the batch axis (it ran at 2.9 before). KL against bf16: docs 0.051, chat 0.068 (MLX 4-bit 0.074 and 0.058).
 
 Coming, in this order:
 
-1. Qwen3-4B, Qwen3-14B and the updated Qwen3-8B on Hugging Face, and the 14B's quality check.
+1. Qwen3-4B, Qwen3-14B and the updated Qwen3-8B on Hugging Face (uploading).
 2. A faster draft: the drafter call takes 16 ms on a busy GPU but 21 ms after each ANE check.
 3. Longer context: 32K, and a faster prefill and decode for long prompts (at 10.9K tokens a check reads the whole KV cache).
 4. Fewer bytes per check. Core AI's palettizer offers 1, 2, 4 and 6 bits, not 3; whether 2-bit tables on a few layers keep the quality is untested.

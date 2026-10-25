@@ -29,7 +29,7 @@ Stock converter, eight 5-layer chunks (`--layers-per-chunk 5`), its own DSpark d
 
 - Anemone: verify 118.5 ms, draft 23 ms, accepted 3.11 per cycle; plain 8.6 tokens/s; first load 1338 s.
 - Energy, one round each (e13 and e15 `--power`): Anemone 0.743 J/token at 19.8 W; mlx-dspark 1.167 at 39.9 W; MLX plain 2.054 at 32.7 W. Anemone uses 1.57x less energy than mlx-dspark at 0.77x its speed.
-- The quality check against bf16 (e07) has not been run for the 14B yet.
+- Quality against bf16 Qwen3-14B (e07, chat text = Qwen3-8B's answers, as for the 4B): docs KL 0.051, top-1 0.890; chat KL 0.068, top-1 0.933. MLX 4-bit: 0.074 / 0.867 and 0.058 / 0.920. Closer than MLX on docs and on top-1; MLX has the lower chat KL, mostly from one of the six answers.
 
 ### The MLP layout
 
