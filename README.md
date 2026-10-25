@@ -100,7 +100,7 @@ export ANEMONE_MODEL=vakharwalad23/Qwen3-8B-Anemone
 .build/release/anemone run "Explain how a CPU cache works."
 ```
 
-The first run downloads the model folder from [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone) (6 GB) and compiles it for the ANE, 12 to 14 minutes on an M3 Pro. Leave about 20 GB free: the compiled copies take about 12 GB, and with too little free disk macOS seems to drop the Neural Engine's copy, which costs a recompile ([Usage](docs/usage.md#when-a-model-compiles-again)). macOS caches the result per app, so later runs start in a few seconds.
+The first run downloads the Qwen3-8B folder (6 GB) from the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face, which holds every converted model; set `ANEMONE_MODEL` to any of them. It then compiles and compiles it for the ANE, 12 to 14 minutes on an M3 Pro. Leave about 20 GB free: the compiled copies take about 12 GB, and with too little free disk macOS seems to drop the Neural Engine's copy, which costs a recompile ([Usage](docs/usage.md#when-a-model-compiles-again)). macOS caches the result per app, so later runs start in a few seconds.
 
 ```sh
 .build/release/anemone chat
@@ -182,7 +182,7 @@ Working today: Qwen3-4B, Qwen3-8B and Qwen3-14B (thinking off) and DeepSeek-R1-0
 Done:
 
 - Drafter runtime picked by measurement, Swift engine and CLI, converter, 4096-token context, OpenAI-compatible server.
-- Qwen3-8B published on [Hugging Face](https://huggingface.co/vakharwalad23/Qwen3-8B-Anemone), updated 2026-10-25 with the converter's weights and the tree drafter.
+- Qwen3-8B published in the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face, updated 2026-10-25 with the converter's weights and the tree drafter.
 - Qwen3-4B through the same converter with no code changes: 74.0 tokens/s, lossless, KL against bf16 0.077 (docs) and 0.112 (chat) vs 0.095 and 0.107 for MLX 4-bit.
 - Tree verify: side branches from the drafter's runner-up tokens fill the spare rows of each check, 4% faster than chains (45.9 vs 44.0 tokens/s).
 - Converter calibration that does not favor one domain (docs KL 0.107 -> 0.059).
