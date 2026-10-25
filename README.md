@@ -75,7 +75,7 @@ Where others are ahead today:
 
 - Speed: on this Mac mlx-dspark is 1.35x faster. Its 8-row GPU check takes 49 ms against 64 ms for the ANE, and its drafter 11.7 ms against our 21 ms. Our drafter takes 16 ms when the GPU is already busy; after each 64 ms ANE check the GPU starts cold ([Benchmarks](docs/benchmarks.md#drafter-cost)).
 - Trees: MacPaw verifies trees of up to 64 tokens and keeps 5.6 tokens per cycle, against 4.0 for our width-16 trees.
-- Context: Forge reaches 64K to 192K tokens. Anemone runs 8192 today (a 5449-token prompt decodes at 22.7 tokens/s) and has measured one chunk at 16384.
+- Context: Forge reaches 64K to 192K tokens. Anemone runs 8192 today and has measured one chunk at 16384. At 5423 tokens of context the GPU decodes faster (mlx-dspark 31.3 tokens/s, plain MLX 25.4, Anemone 17.9), though Anemone still prefills 13% faster and uses 2.3x less energy per request ([Benchmarks](docs/benchmarks.md#long-context-one-chunk-width-16)).
 - Models: ANEMLL and Forge cover several families and sizes. Anemone runs two Qwen3 sizes and R1-0528-Qwen3-8B.
 - Chips: every Anemone number is from one M3 Pro. On an M4 Max, MLX alone runs an 8B at about 90 tok/s ([apple-silicon-llm-bench](https://github.com/john-rocky/apple-silicon-llm-bench)); we have no numbers on M1, M2, M4 or M5 yet.
 

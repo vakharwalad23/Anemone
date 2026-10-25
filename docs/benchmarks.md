@@ -248,6 +248,16 @@ Simulated in PyTorch before export (no ANE involved):
 
 - First load: 1135 s. Export: target 336 s, drafter 95 s.
 
+Against the GPU on one 5423-token prompt (the Anemone docs plus a request for a five-bullet summary), 2026-10-25, energy with `e21_run_energy.py` (model load left out) and `e15 --power`, two rounds, prefill included:
+
+| engine | answer tokens | prefill | decode tok/s | system W | energy per request |
+|---|---|---|---|---|---|
+| **Anemone, 8192 folder** | **203** | **16.7 s** | **17.9** | **14.9** | **456 J** |
+| MLX 4-bit plain | 220 | 19.1 s | 25.4 | 36.1 | 1069 J |
+| mlx-dspark | 235 | 19.2 s | 31.3 | 37.4 | 1077 J |
+
+- The GPU decodes faster at this length: the ANE's attention cost grows with context, and the drafter accepts 1.87 per cycle on this summary. Anemone prefills 13% faster and uses 2.3x less energy per request.
+
 ## Drafter runtime
 
 Measured on battery power (100% to 83%, Low Power Mode off), so the absolute numbers are lower than the AC tables above. Both drafters ran in the same session against the same ANE target.
