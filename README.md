@@ -209,7 +209,7 @@ Coming, in this order:
 
 ## Credits
 
-- DeepSeek's DeepInfer for the DSpark drafter and confidence-scheduled verification.
+- DeepSeek's [DeepInfer](https://github.com/deepseek-ai/DeepInfer) (Apache 2.0) for the DSpark drafter and confidence-scheduled verification. The Hugging Face folders carry drafter programs converted from DeepSeek's [dspark_qwen3_4b_block7](https://huggingface.co/deepseek-ai/dspark_qwen3_4b_block7), [dspark_qwen3_8b_block7](https://huggingface.co/deepseek-ai/dspark_qwen3_8b_block7) and [dspark_qwen3_14b_block7](https://huggingface.co/deepseek-ai/dspark_qwen3_14b_block7); those repositories list no license, and the drafters will be removed if DeepSeek asks.
 - Apple's Core AI and coreai-models for the ANE runtime and export tools.
 - Qwen3 by the Qwen team. Model weights keep their own licenses.
 
