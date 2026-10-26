@@ -1,6 +1,6 @@
 # Using Anemone
 
-Build once with `swift build -c release`; the binary is `.build/release/anemone`. Every command takes `--model`, which is a model folder made by the converter or a Hugging Face repo id (`org/name`) to download into `~/.cache/anemone`. Without `--model`, `$ANEMONE_MODEL` is used.
+Build once with `swift build -c release`; the binary is `.build/release/anemone`. Every command takes `--model`, which is a model folder made by the converter or a Hugging Face repo id (`org/name`) to download into `~/.cache/anemone`. Without `--model`, `$ANEMONE_MODEL` is used, else `vakharwalad23/Qwen3-8B-Anemone`.
 
 The first load of a model compiles it for the Neural Engine (on an M3 Pro: 10 minutes for the 4B, 12 to 14 for an 8B with 4096 context, 19 to 23 for 8192 and 16384, 22 for the 14B). macOS caches the result per executable, so later loads take a few seconds, until the cache goes stale (see below).
 

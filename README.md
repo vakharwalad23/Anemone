@@ -96,11 +96,10 @@ Where others are ahead today:
 git clone https://github.com/vakharwalad23/Anemone.git
 cd Anemone
 swift build -c release
-export ANEMONE_MODEL=vakharwalad23/Qwen3-8B-Anemone
 .build/release/anemone run "Explain how a CPU cache works."
 ```
 
-The first run downloads the Qwen3-8B folder (6 GB) from the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face, which holds every converted model; set `ANEMONE_MODEL` to any of them. It then compiles the folder for the ANE, 12 to 14 minutes on an M3 Pro. Leave about 20 GB free: the compiled copies take about 12 GB, and with too little free disk macOS seems to drop the Neural Engine's copy, which costs a recompile ([Usage](docs/usage.md#when-a-model-compiles-again)). macOS caches the result per app, so later runs start in a few seconds.
+The first run downloads the Qwen3-8B folder (6 GB) from the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face, which holds every converted model; pick another with `--model` or `ANEMONE_MODEL`. It then compiles the folder for the ANE, 12 to 14 minutes on an M3 Pro. Leave about 20 GB free: the compiled copies take about 12 GB, and with too little free disk macOS seems to drop the Neural Engine's copy, which costs a recompile ([Usage](docs/usage.md#when-a-model-compiles-again)). macOS caches the result per app, so later runs start in a few seconds.
 
 ```sh
 .build/release/anemone chat

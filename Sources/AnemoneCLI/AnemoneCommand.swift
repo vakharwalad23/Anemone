@@ -13,8 +13,8 @@ struct AnemoneCommand: AsyncParsableCommand {
 }
 
 struct ModelOptions: ParsableArguments {
-    @Option(name: .shortAndLong, help: "Model folder made by the converter, or a Hugging Face repo id to download (default: $ANEMONE_MODEL).")
-    var model: String = ProcessInfo.processInfo.environment["ANEMONE_MODEL"] ?? "models/qwen3-8b"
+    @Option(name: .shortAndLong, help: "Model folder made by the converter, or a Hugging Face repo id to download; $ANEMONE_MODEL sets the default.")
+    var model: String = ProcessInfo.processInfo.environment["ANEMONE_MODEL"] ?? "vakharwalad23/Qwen3-8B-Anemone"
 
     func load() async throws -> LanguageModel {
         let folder = try await resolve()
