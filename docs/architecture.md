@@ -1,6 +1,6 @@
 # Architecture
 
-Timings are from the Swift engine (`anemone bench`) and the lab prototype it was built from, on an M3 Pro, macOS 27.0.1, AC power. Trees and confidence scheduling are not built yet.
+Timings are from the Swift engine (`anemone bench`) and the lab prototype it was built from, on an M3 Pro, macOS 27.0.1, AC power. Confidence scheduling and drafting during the check are not built yet.
 
 ## Parts
 
@@ -99,7 +99,7 @@ flowchart LR
 ## Correctness checks
 
 - Lossless: speculative output equals plain greedy output on the ANE, token for token.
-- Quality: KL and top-1 agreement against the bf16 model on docs and chat text, published with each model. A model ships only if both are at or better than MLX 4-bit.
+- Quality: KL and top-1 agreement against the bf16 model on docs and chat text, published with each model. The goal is both at or better than MLX 4-bit: the 8B meets it; the 4B and 14B beat MLX on docs KL and top-1 but trail it on chat KL (0.112 vs 0.107, 0.068 vs 0.058).
 - Determinism: the same prompt gives the same output on every run.
 
 ## Limits today

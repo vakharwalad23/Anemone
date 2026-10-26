@@ -192,10 +192,13 @@ Done:
 
 Coming, in this order:
 
-1. A faster draft: the drafter call takes 16 ms on a busy GPU but 21 ms after each ANE check.
-2. Longer context: 32K, and a faster prefill and decode for long prompts (at 10.9K tokens a check reads the whole KV cache).
-3. Fewer bytes per check. Core AI's palettizer offers 1, 2, 4 and 6 bits, not 3; whether 2-bit tables on a few layers keep the quality is untested.
-4. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
+1. Draft while the ANE checks: the GPU drafts the next guesses during the current check instead of after it. The draft is 21.5 ms of each 86 ms cycle, and the GPU starts cold after every check (16 ms back to back, 32 to 37 ms after 64 ms idle).
+2. DeepSeek-R1-0528-Qwen3-8B on Hugging Face with the current converter, plus drafts from repeated text for its thinking (the Qwen3-8B drafter keeps only 1.5 tokens per cycle there).
+3. Confidence scheduling: a tree, a chain or no draft per cycle, so prompts like translation stop paying for drafts.
+4. Long prompts: 32K context, faster prefill, and faster decode where the GPU still wins (at 5423 tokens plain MLX decodes 25.4 tokens/s, Anemone 17.9).
+5. Wider trees (32 to 64 rows), and closing the chat KL gap of the 4B and 14B.
+6. A shorter first load (10 to 23 minutes on an M3 Pro today).
+7. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
 
 ## Docs
 
