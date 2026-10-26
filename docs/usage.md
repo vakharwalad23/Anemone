@@ -96,7 +96,7 @@ What we saw on 2026-10-25 (M3 Pro 18 GB, macOS 26A434):
 - With 60 GB free, the 4B, an 8B and the 14B compiled one after another, and all three then loaded from the cache in 8 to 15 s.
 - Rebuilding Anemone and moving a model folder do not make a model stale.
 
-Our reading: when the disk runs low, macOS purges the Neural Engine's copy, and Core AI returns nothing for the entry that is left. That fits both runs and the disk accounting, but we could not watch it happen. If a load still fails after the automatic retry, Anemone stops with a message; removing the whole cache makes every model compile again on its next load:
+Tested on 2026-10-27: with the 8B compiled and loading in 10.0 s, filling the disk until a write failed made macOS free 23 GB that no readable file held, the Neural Engine's compiled copies. Core AI's own cache (25.7 GB) was untouched, yet the next load of the 8B compiled again for 753.4 s. So when the disk runs low, macOS purges the Neural Engine's copy of compiled models, and the next load of each pays a full compile (sometimes Core AI returns nothing for the entry left behind instead, the case above). If a load still fails after the automatic retry, Anemone stops with a message; removing the whole cache makes every model compile again on its next load:
 
 ```sh
 rm -rf ~/Library/Caches/coreai-cache/*/anemone
