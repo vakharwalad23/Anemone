@@ -4,6 +4,8 @@ Low-energy LLM inference on the Apple Neural Engine (ANE), with exact output.
 
 Anemone runs the large model on the ANE and a small drafter on the GPU. The drafter guesses the next 7 tokens, and the ANE checks all of them in one pass. Qwen3-8B generates **46 tokens/s on an M3 Pro at 0.49 J per token: 1.45x less energy than the fastest GPU decoder we measured (mlx-dspark, 62 tokens/s) and 2.5x less than plain MLX**. The output is token for token what the model produces on its own, and the GPU stays almost idle.
 
+Requirements: an Apple Silicon Mac with macOS 27 (Core AI) and Xcode 27 to build. Tested only on an M3 Pro with 18 GB. The first run of each model compiles it for the ANE, 10 to 23 minutes on an M3 Pro depending on the model size, and needs free disk for the compiled copies (about 20 GB in all for the 8B). Later runs start in seconds.
+
 ```text
 $ anemone bench --model models/qwen3-8b-4k-tree
 math      plain  16.1 tok/s   speculative  74.3 tok/s   accepted 5.53   lossless yes
@@ -89,8 +91,6 @@ Where others are ahead today:
 - Chips: every Anemone number is from one M3 Pro. On an M4 Max, MLX alone runs an 8B at about 90 tok/s ([apple-silicon-llm-bench](https://github.com/john-rocky/apple-silicon-llm-bench)); we have no numbers on M1, M2, M4 or M5 yet.
 
 ## Quick start
-
-Requirements: an Apple Silicon Mac with macOS 27 and Xcode 27. Tested on M3 Pro (18 GB).
 
 ```sh
 git clone https://github.com/vakharwalad23/Anemone.git
