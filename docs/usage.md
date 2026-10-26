@@ -11,7 +11,7 @@ The first load of a model compiles it for the Neural Engine (on an M3 Pro: 10 mi
 | `anemone run "<prompt>"` | Answers one prompt and streams the reply to stdout. `--stats` prints speed to stderr. |
 | `anemone chat` | Multi-turn chat in the terminal. An empty line or Ctrl-D quits. `--system` sets a system prompt. |
 | `anemone serve` | OpenAI-compatible HTTP API on `127.0.0.1:8080` (`--host`, `--port`). |
-| `anemone bench` | Six fixed prompts, plain and speculative: tokens/s, acceptance, draft and verify time, and a token-for-token lossless check. `--only plain` or `--only speculative` runs one mode; `--json` writes the results. |
+| `anemone bench` | Six fixed prompts, plain and speculative: tokens/s, acceptance, draft and verify time, and a token-for-token lossless check. `--only plain` or `--only speculative` runs one mode; `--json` writes the results with the chip, memory, macOS build and power source. |
 
 Shared options: `--max-tokens` (reply length), `--thinking` (let Qwen3 think first; slower, because the drafter accepts less on thinking text), `--no-draft` on `run` (plain greedy decoding on the ANE).
 

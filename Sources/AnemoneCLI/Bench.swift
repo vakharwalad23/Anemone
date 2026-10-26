@@ -25,6 +25,15 @@ struct Bench: AsyncParsableCommand {
         let plain: GenerationStats?
         let speculative: GenerationStats?
         let lossless: Bool?
+        /// The reply's token ids (plain greedy when it ran), so quality tools can score the text the engine served.
+        let tokens: [Int32]
+    }
+
+    struct Report: Codable {
+        let machine: Machine
+        let model: String
+        let maxTokens: Int
+        let rows: [Row]
     }
 
     @OptionGroup var model: ModelOptions
@@ -41,14 +50,16 @@ struct Bench: AsyncParsableCommand {
             let plain = only == .speculative ? nil : try await languageModel.respond(to: messages, options: plainOptions)
             let drafted = only == .plain ? nil : try await languageModel.respond(to: messages, options: GenerationOptions(maxTokens: maxTokens))
             let lossless = plain.flatMap { plain in drafted.map { $0.tokens == Array(plain.tokens.prefix($0.tokens.count)) } }
-            rows.append(Row(prompt: name, plain: plain?.stats, speculative: drafted?.stats, lossless: lossless))
+            let tokens = (plain ?? drafted)?.tokens ?? []
+            rows.append(Row(prompt: name, plain: plain?.stats, speculative: drafted?.stats, lossless: lossless, tokens: tokens))
             print(name.padding(toLength: 10, withPad: " ", startingAt: 0) + line(plain: plain?.stats, speculative: drafted?.stats, lossless: lossless))
         }
         print("mean      " + summary(rows))
         if let json {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(rows).write(to: URL(fileURLWithPath: json))
+            let report = Report(machine: .current(), model: model.model, maxTokens: maxTokens, rows: rows)
+            try encoder.encode(report).write(to: URL(fileURLWithPath: json))
         }
     }
 
