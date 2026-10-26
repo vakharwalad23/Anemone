@@ -28,11 +28,12 @@ uv run --project convert anemone-convert package --chunks work/qwen3-8b-chunks -
 | step | what it does | time | peak memory |
 |---|---|---|---|
 | `quantize` | Runs the bf16 model one layer at a time over calibration text, then replaces every linear layer with 4-bit lookup-table weights chosen by GPTQ | not measured yet in the converter (GPTQ alone took about 30 min in the lab) | not measured |
-| `target` | Exports the quantized checkpoint as four 9-layer Core AI programs with call widths 8, 16, 32, 64 and context rungs from 256 up to `--context` | 354 s for the four chunks | 11.7 GB |
+| `target` | Exports the quantized checkpoint as four 9-layer Core AI programs with call widths 16 and 64 and context rungs from 256 up to `--context` | 354 s for the four chunks | 11.7 GB |
 | `drafter` | Exports the DSpark drafter as one static-shape int4 GPU program with two entry points: `main` (draft) and `inject` (prompt) | about 2 min (134 s in the lab) | not measured |
 | `package` | Links the programs into a folder, writes the fp16 embedding table, the tokenizer files and `anemone.json` | seconds | small |
 
 - `quantize` calibrates on six Python standard library files, five machine-learning library modules from its own environment (transformers, torch, huggingface_hub) and the model's own answers to 16 chat prompts. It writes those answers with the MLX copy of the model, so the first run downloads `mlx-community/Qwen3-8B-4bit` (4.6 GB). Pass `--chat-calibration answers.json` to reuse a saved set.
+- The first load of a folder converted on or after 2026-10-27 compiles in 414 s for the 8B, half of the 816 s of a four-width folder: Core AI compiles every function, and the engine only calls widths 16 and 64 ([Benchmarks](benchmarks.md#where-the-first-load-goes)).
 - `--context` defaults to 4096 (rungs 256 to 4096). Short conversations still use the small rungs and the drafter's small cache, so speed at short context is the same as a 1024 export (45.0 vs 45.1 tokens/s). Pass `--context 1024` to both `target` and `drafter` for a folder that compiles faster on first load (414 s instead of 702 s).
 - `--context 8192` (to both `target` and `drafter`) builds rungs up to 8192 with row-wise attention, which keeps 8192 at 1.5x the cost of 4096 ([Benchmarks](benchmarks.md#long-context-one-chunk-width-16)). First load takes 1135 s.
 - `--context 16384` works the same way; first load takes 1353 s. At 10.9K tokens of context decoding drops to 10.6 tokens/s ([Benchmarks](benchmarks.md#16384-token-context)).
@@ -69,7 +70,7 @@ uv run --project convert --extra export anemone-convert drafter --out work/draft
 uv run --project convert anemone-convert package --model deepseek-ai/DeepSeek-R1-0528-Qwen3-8B --chunks work/r1-chunks --drafter work/drafter.aimodel --out models/r1-qwen3-8b
 ```
 
-Quantize took 2245 s at 5.4 GB peak, the first load 714 s.
+Quantize took 2205 s (2245 s at 5.4 GB peak on 2026-10-25), the first load 816 s (714 s on 2026-10-25).
 
 ## Qwen3-14B
 

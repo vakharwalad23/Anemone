@@ -39,8 +39,8 @@ INPUTS = (TRANSFORMER_INPUT_NAME, POSITION_IDS_INPUT_NAME, IN_STEP_INPUT_NAME, C
 STATES = (KEY_CACHE_INPUT_NAME, VALUE_CACHE_INPUT_NAME)
 STATE_OUTPUTS = (KEY_CACHE_OUTPUT_NAME, VALUE_CACHE_OUTPUT_NAME)
 CONV_WEIGHTS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
-# Apple ships widths 8, 16, 64; 32 fits a confidence-pruned draft tree without paying for 64
-WIDTHS = (8, 16, 32, 64)
+# the engine verifies at 16 and prefills at 64; Core AI compiles every function on first load (10 took 98.7 s, 20 took 195.8 s)
+WIDTHS = (16, 64)
 MIN_CONTEXT = BaseForCausalLMForiOS.IOS_STATIC_MIN_CACHE_LEN
 INTERLEAVE = BaseForCausalLMForiOS.KV_CACHE_INTERLEAVE_FACTOR
 TRACE_WIDTH = 8
