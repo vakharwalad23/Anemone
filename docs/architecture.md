@@ -50,7 +50,7 @@ sequenceDiagram
 
 - Qwen3-8B has 36 layers. It is split into four chunks of 9 layers. The last chunk also holds the final norm, the 151936-wide output layer and the argmax, so only token ids and hidden states leave the ANE.
 - Weights are 4-bit lookup tables: 16 values per group of 32 output rows. Chunks are 880 MB each, 1.2 GB for the last.
-- Each chunk has one function per (context rung, call width) pair: widths 8, 16, 32 and 64, rungs from 256 doubling up to the export's context (1024 or 4096). All rungs share one KV buffer laid out for the largest; a smaller rung binds a prefix view of it, and each call uses the smallest rung that holds it.
+- Each chunk has one function per (context rung, call width) pair: widths 16 (verify, and plain decoding) and 64 (prefill), rungs from 256 doubling up to the export's context. Core AI compiles every function on first load, so the converter exports no width the engine does not call; folders converted before 2026-10-27 also carry widths 8 and 32 and compile twice as long. All rungs share one KV buffer laid out for the largest; a smaller rung binds a prefix view of it, and each call uses the smallest rung that holds it.
 - Every layer keeps the tokens on the width axis of its convolutions. Apple's iOS MLP puts them on the batch axis, and for Qwen3-14B the ANE then ran the MLP once per token (a layer took 64.3 ms at width 32 instead of 3.1). The converter's MLP transposes like Apple's attention does.
 - The attention mask and the positions are inputs. Chains, token trees and replays all run on the same functions without a new export.
 - The KV cache stays on the ANE. A write must start at a position that is a multiple of 4, so a call replays up to 3 earlier tokens. Last token, 7 guesses and up to 3 replays fit in width 16.
@@ -62,22 +62,14 @@ sequenceDiagram
 - A markov head adds a low-rank next-token correction to each guess. A confidence head estimates the chance each guess is accepted.
 - It runs as one Core AI program on the GPU with two entry points over the same weights. `main` adds the hidden states of the newly accepted tokens (up to 8 rows) to its context, drafts the 7 guesses with the runner-up at each step, and also emits the embedded 16-row input of the next ANE verify. The engine does not use that output yet; it embeds the verify rows on the CPU. `inject` only adds prompt hidden states, 64 rows per call in 7.1 ms, so a long prompt reaches the drafter in a fraction of a second.
 - All shapes are fixed: positions, counts and offsets are inputs, and attention reads the whole cache through a mask. Changing shapes made Core AI recompile on every call (about 350 ms each).
-- In the lab timing tool, draft plus verify chained with `encode` takes 83.7 ms per cycle, against 87.4 ms when each call waits for the last. The engine still waits for each call. MLX was measured as the alternative: same acceptance, no faster cycle, and a second runtime to ship. See [Benchmarks](benchmarks.md#drafter-runtime).
+- In the lab timing tool on the published folder, draft plus verify chained with `encode` takes 82.05 ms per cycle, against 82.38 ms when each call waits for the last (2026-10-27; 83.7 vs 87.4 ms on the first lab export). The engine waits for each call. MLX was measured as the alternative: same acceptance, no faster cycle, and a second runtime to ship. See [Benchmarks](benchmarks.md#drafter-runtime).
 
-## Trees (built) and confidence scheduling (planned)
+## Trees
 
-A width-16 call has room for more than one chain of guesses. The engine fills the free slots with the drafter's runner-up tokens as one-token side branches, at the depths where the chain is most likely to miss (formula in [Math](math.md#token-trees)). This is 4% faster than the chain alone (45.9 vs 44.0 tokens/s, [Benchmarks](benchmarks.md#token-trees)). Choosing chain, a wider tree or no draft per cycle from the confidences is planned:
+A width-16 call has room for more than one chain of guesses. The engine fills the free slots with the drafter's runner-up tokens as one-token side branches, at the depths where the chain is most likely to miss (formula in [Math](math.md#token-trees)). This is 4% faster than the chain alone (45.9 vs 44.0 tokens/s, [Benchmarks](benchmarks.md#token-trees)).
 
-```mermaid
-flowchart TD
-    C["Confidences from the last draft"] --> Q{"Is an early miss likely?"}
-    Q -- "no" --> CH["Chain, width 16"]
-    Q -- "yes" --> TR["Tree, width 32"]
-    C --> P{"Will drafting pay at all?"}
-    P -- "no" --> PL["Plain decode, width 8"]
-```
-
-Measured in the lab: width-32 trees accept 20% more tokens (3.29 vs 2.74 per cycle) but cost 11% more verify time and 6 ms more drafting, so in Python they break even. They pay once branch drafting is batched.
+- Skipping the draft when the last cycles missed does not pay: the misses are not predictable from the cycles before them (measured 2026-10-27, [Benchmarks](benchmarks.md#tried-not-worth-it)).
+- Wider trees with re-rolled side branches keep more tokens per check offline (2.92 to 3.67 on Qwen3-8B at 36 rows), but need a width-32 or width-64 check; in the Python lab width-32 trees broke even. Not built yet.
 
 ## Model pipeline
 
@@ -89,12 +81,12 @@ flowchart LR
     Q --> X["Core AI export, four ANE chunks"]
     X --> M["Model folder: chunks, drafter, tokenizer, config"]
     M --> HUB["Hugging Face Hub"]
-    HUB --> L["First load on a Mac: about 7 min of ANE compilation"]
+    HUB --> L["First load on a Mac: about 7 to 14 min of ANE compilation"]
     L --> R["Later loads: instant"]
 ```
 
 - Palettizing the 8B takes about 30 min on the CPU. Export takes 99 to 167 s per chunk with a peak of 9.2 GB of RAM.
-- The first load on a Mac compiles each chunk for the ANE: 98 to 116 s per chunk. The compiled result is cached across processes of the same binary, so a second process loads in 0.0 s.
+- The first load on a Mac compiles each chunk for the ANE: the 8B takes 414 s with widths 16 and 64, 816 s with the four widths of older folders (2026-10-27). The compiled result is cached across processes of the same binary, so a second process loads in seconds.
 
 ## Correctness checks
 
