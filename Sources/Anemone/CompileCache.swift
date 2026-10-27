@@ -21,14 +21,19 @@ private func isStaleCompiledCopy(_ error: Error) -> Bool {
     "\(error)" == "nilError"
 }
 
-/// Deletes the program's entry, `coreai-cache/<macOS build>/<app>/<main.hash in hex>`; false if there is none.
+/// Deletes the program's cache entries; false if there are none.
 private func removeCompiledCopy(of url: URL) throws -> Bool {
+    let entries = try compiledCopies(of: url)
+    for entry in entries { try FileManager.default.removeItem(at: entry) }
+    return !entries.isEmpty
+}
+
+/// The program's entries, `coreai-cache/<macOS build>/<app>/<main.hash in hex>`, that exist.
+func compiledCopies(of url: URL) throws -> [URL] {
     let hash = try Data(contentsOf: url.appending(path: "main.hash")).map { String(format: "%02x", $0) }.joined()
     let files = FileManager.default
     let root = files.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "coreai-cache")
-    let entries = try files.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+    return try files.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
         .map { $0.appending(path: ProcessInfo.processInfo.processName).appending(path: hash) }
         .filter { files.fileExists(atPath: $0.path) }
-    for entry in entries { try files.removeItem(at: entry) }
-    return !entries.isEmpty
 }

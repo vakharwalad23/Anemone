@@ -29,6 +29,8 @@ public enum GenerationEvent: Sendable {
 /// A converted model loaded for generation: the target on the ANE, the drafter on the GPU. One request at a time.
 public actor LanguageModel {
     public let folder: ModelFolder
+    /// Chunk functions Core AI runs off the Neural Engine because its compiler rejected them; such a model is much slower.
+    public nonisolated let offNeuralEngine: [String]
     private let speculator: Speculator
     private let tokenizer: ChatTokenizer
     private var busy = false
@@ -36,6 +38,7 @@ public actor LanguageModel {
 
     private init(folder: ModelFolder, speculator: Speculator, tokenizer: ChatTokenizer) {
         self.folder = folder
+        offNeuralEngine = speculator.target.offNeuralEngine
         self.speculator = speculator
         self.tokenizer = tokenizer
     }

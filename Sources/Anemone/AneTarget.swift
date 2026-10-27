@@ -34,6 +34,10 @@ final class AneChunk {
         values = try state(reference, "value_cache")
     }
 
+    var functionNames: [String] {
+        functions.flatMap { rung, byWidth in byWidth.keys.map { "extend_\(rung)_\($0)" } }
+    }
+
     func run(rung: Int, width: Int, inputs: [String: NDArray]) async throws -> InferenceFunction.Outputs {
         guard let function = functions[rung]?[width] else { throw AnemoneError.missingFunction("extend_\(rung)_\(width)") }
         return try await Anemone.run(function, inputs: inputs, keys: &keys, values: &values, names: ("key_cache", "value_cache"))
@@ -46,12 +50,15 @@ final class AneTarget {
     private let embeddings: Embeddings
     private let rungs: [Int]
     private var window: KVWindow
+    /// Functions Core AI compiled for another device because the ANE compiler rejected them.
+    let offNeuralEngine: [String]
 
     var context: Int { window.context }
 
-    private init(chunks: [AneChunk], embeddings: Embeddings) {
+    private init(chunks: [AneChunk], embeddings: Embeddings, offNeuralEngine: [String]) {
         self.chunks = chunks
         self.embeddings = embeddings
+        self.offNeuralEngine = offNeuralEngine
         let common = chunks.dropFirst().reduce(Set(chunks[0].functions.keys)) { $0.intersection($1.functions.keys) }
         rungs = common.sorted()
         let largest = rungs[rungs.count - 1]
@@ -66,7 +73,10 @@ final class AneTarget {
             chunks.append(try await loadProgram(folder.file(name), on: .neuralEngine) { try AneChunk(model: $0, output: output) })
         }
         let embeddings = try Embeddings(url: folder.file(config.embeddings), hiddenSize: config.hiddenSize, vocabSize: config.vocabSize)
-        let target = AneTarget(chunks: chunks, embeddings: embeddings)
+        let offNeuralEngine = zip(config.chunks, chunks).flatMap { name, chunk in
+            functionsOffNeuralEngine(folder.file(name), functions: chunk.functionNames).map { $0.map { "\(name) \($0)" } } ?? []
+        }
+        let target = AneTarget(chunks: chunks, embeddings: embeddings, offNeuralEngine: offNeuralEngine)
         try await target.warm()
         return target
     }

@@ -86,6 +86,8 @@ rm -rf ~/Library/Caches/anemone ~/Library/HTTPStorages/anemone
 
 ## When a model compiles again
 
+If the Neural Engine compiler rejects part of a model, Core AI runs it on another device without an error, and the model is many times slower (a 32768-context export, 2026-10-27). After each load Anemone reads the compiled copy and prints a warning that names the functions running off the ANE.
+
 Sometimes Core AI returns nothing for a cached compiled program instead of compiling it again. Anemone then deletes that program's cache entry (`~/Library/Caches/coreai-cache/<macOS build>/anemone/<main.hash in hex>`) and loads it once more, which compiles it from scratch: 771 s for an 8B and 1309 s for the 14B on an M3 Pro, then 6 to 20 s on later loads.
 
 Keep free disk space: compiling a model takes about 2.5x the size of its `.aimodel` files, because macOS keeps a second copy for the Neural Engine outside this cache. The 4B, 8B and 14B together (15.6 GB of programs) took 39 GB; the 14B alone took 25.6 GB at the peak of its compile and 22.6 GB after (8.6 GB of it in the Core AI cache).

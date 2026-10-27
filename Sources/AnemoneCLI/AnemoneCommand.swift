@@ -22,6 +22,9 @@ struct ModelOptions: ParsableArguments {
         let start = ContinuousClock.now
         let languageModel = try await LanguageModel.load(from: folder)
         log("Loaded in \((ContinuousClock.now - start).formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 1)))).")
+        if !languageModel.offNeuralEngine.isEmpty {
+            log("Warning: the Neural Engine compiler rejected \(languageModel.offNeuralEngine.count) functions of this model, so Core AI runs them on another device and the model is much slower: \(languageModel.offNeuralEngine.joined(separator: ", ")).")
+        }
         return languageModel
     }
 
