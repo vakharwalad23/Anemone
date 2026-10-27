@@ -18,7 +18,7 @@ struct ModelOptions: ParsableArguments {
 
     func load() async throws -> LanguageModel {
         let folder = try await resolve()
-        log("Loading \(model). The first load compiles it for the Neural Engine (12 to 23 minutes for an 8B or 14B on an M3 Pro); later loads take seconds.")
+        log("Loading \(model). The first load compiles it for the Neural Engine (7 to 23 minutes on an M3 Pro, by model size and converter version); later loads take seconds.")
         let start = ContinuousClock.now
         let languageModel = try await LanguageModel.load(from: folder)
         log("Loaded in \((ContinuousClock.now - start).formatted(.units(allowed: [.seconds], fractionalPart: .show(length: 1)))).")
