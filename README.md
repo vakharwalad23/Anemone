@@ -2,9 +2,11 @@
 
 Low-energy LLM inference on the Apple Neural Engine (ANE), with exact output.
 
-Anemone runs the large model on the ANE and a small drafter on the GPU. The drafter guesses the next 7 tokens, and the ANE checks all of them in one pass. Qwen3-8B generates **46 tokens/s on an M3 Pro at 0.49 J per token: 1.45x less energy than the fastest GPU decoder we measured (mlx-dspark, 62 tokens/s) and 2.5x less than plain MLX**. The output is token for token what the model produces on its own, and the GPU stays almost idle.
+Anemone runs the large model on the ANE and a small drafter on the GPU. The drafter guesses the next 7 tokens, and the ANE checks all of them in one pass. Qwen3-8B generates **46 tokens/s on an M3 Pro at 0.49 J per token: 1.45x less energy than the fastest GPU decoder we measured (mlx-dspark, 62 tokens/s) and 2.5x less than plain MLX**. The output is token for token what the same 4-bit weights produce with plain greedy decoding, and the GPU stays almost idle. How close those weights are to bf16 is measured separately, as KL below.
 
 Requirements: an Apple Silicon Mac with macOS 27 (Core AI) and Xcode 27 to build. Tested only on an M3 Pro with 18 GB. The first run of each model compiles it for the ANE, 10 to 23 minutes on an M3 Pro depending on the model size, and needs free disk for the compiled copies (about 20 GB in all for the 8B). Later runs start in seconds.
+
+**Coming soon: a first load half as long.** The converter now exports only the two call widths the engine uses, so the Qwen3-8B folder compiles in 414 s instead of 816 s at the same speed (M3 Pro, macOS 27.0.1, AC power, 2026-10-27, [Benchmarks](docs/benchmarks.md#where-the-first-load-goes)). The Qwen3 folders on Hugging Face will be converted again with it, and with 3x more chat calibration (8B chat KL against bf16 0.080 -> 0.064, [Benchmarks](docs/benchmarks.md#more-chat-calibration)). The R1 folder already loads this way.
 
 ```text
 $ anemone bench --model models/qwen3-8b-4k-tree
