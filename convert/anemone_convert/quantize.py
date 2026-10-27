@@ -32,6 +32,7 @@ PACKAGE_MODULES = (
 )
 # GPTQ's down_proj Hessian is 12288 wide, so a few thousand tokens leave most directions unconstrained
 DOCUMENT_TOKENS = 2048
+# 48 answers, not 16: chat KL 0.080 -> 0.064 on the 8B and 0.133 -> 0.087 on the 4B, docs unchanged (lab B8, 2026-10-27)
 CHAT_PROMPTS = (
     "Write a haiku sequence about autumn in a small mountain town.",
     "How do vaccines train the immune system? Keep it simple.",
@@ -49,6 +50,38 @@ CHAT_PROMPTS = (
     "Write a Rust function that counts word frequencies in a string.",
     "Summarize the plot of Romeo and Juliet for a ten-year-old.",
     "Give five tips for writing clear technical documentation.",
+    "Explain how a hash table handles collisions, with a small example.",
+    "Write a Python class for a fixed-size ring buffer with push and pop.",
+    "What is the difference between a process and a thread?",
+    "Give me a weekly meal plan for a vegetarian on a budget.",
+    "How does compound interest work? Show a worked example.",
+    "Write a bash script that renames every .jpeg file in a folder to .jpg.",
+    "Explain why the sky is blue to a twelve-year-old.",
+    "Draft a short cover letter for a junior data analyst job.",
+    "What are the main causes of inflation?",
+    "Write a Go function that reverses a linked list.",
+    "Explain the Monty Hall problem and why switching wins.",
+    "How should I start learning to play the guitar as an adult?",
+    "Describe how a bill becomes a law in the United States.",
+    "Write a regular expression that matches an email address and explain each part.",
+    "What is gradient descent? Explain it without heavy math.",
+    "Give me a packing list for a five-day hiking trip.",
+    "Explain the difference between weather and climate.",
+    "Write a C function that checks whether a number is prime.",
+    "What are good habits for getting better sleep?",
+    "Explain how public key cryptography lets two people share a secret.",
+    "Summarize the main ideas of stoic philosophy.",
+    "Write a TypeScript interface for a blog post and a function that sorts posts by date.",
+    "How do I negotiate a higher salary in a job offer?",
+    "Explain what a black hole is and how it forms.",
+    "Write a short poem about the ocean at night.",
+    "What is the difference between machine learning and traditional programming?",
+    "Explain how to compute the median of a list, including the even case.",
+    "Give me tips for a first-time visit to Paris.",
+    "Explain how vaccines differ from antibiotics.",
+    "Write a Python script that reads a CSV file and prints the average of one column.",
+    "Why do leaves change color in the fall?",
+    "Explain big O notation with three everyday examples.",
 )
 CHAT_REPLY_TOKENS = 320
 

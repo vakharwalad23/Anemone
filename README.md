@@ -67,7 +67,7 @@ The 4-bit weights are also closer to the original model than MLX 4-bit (KL again
 | MLX 4-bit affine, group 64 | 0.085 | 0.086 | 0.870 | 0.902 |
 | Core AI default palettizer | 0.341 | 0.371 | 0.767 | 0.825 |
 
-Both Anemone rows are GPTQ onto the ANE lookup tables. The converter calibrates on the Python standard library, five machine-learning library modules and the model's own chat answers, nothing from the docs repo; its numbers come from the simulator, which matched the ANE within 0.004 KL. The lab calibration shared a domain with the docs set (four files from one code repo), so its 0.047 is optimistic. Qwen3-4B and Qwen3-14B: closer than MLX on docs KL and top-1, slightly behind on chat KL ([Benchmarks](docs/benchmarks.md#qwen3-14b)).
+Both Anemone rows are GPTQ onto the ANE lookup tables. The converter calibrates on the Python standard library, five machine-learning library modules and the model's own chat answers, nothing from the docs repo; its numbers come from the simulator, which matched the ANE within 0.004 KL. The lab calibration shared a domain with the docs set (four files from one code repo), so its 0.047 is optimistic. Qwen3-4B and Qwen3-14B as published: closer than MLX on docs KL and top-1, slightly behind on chat KL ([Benchmarks](docs/benchmarks.md#qwen3-14b)). The converter now calibrates on 48 chat answers instead of 16, which brings the 4B's chat KL below MLX's (0.087 vs 0.128); the published folders do not have it yet.
 
 ## How it compares
 
@@ -165,7 +165,7 @@ Details: [Architecture](docs/architecture.md) and [Math](docs/math.md).
 ## What is new
 
 - GPTQ onto the ANE lookup tables. Core AI stores 4-bit weights as 16 values per group of 32 rows. Anemone picks the 16 values with activation-weighted k-means, then snaps one input column at a time and pushes each column's rounding error onto the columns not yet snapped. The result still has 16 values per group, so it exports through Core AI unchanged: same size and speed as Apple's default, 7.3x lower KL.
-- Calibration on the model's own chat answers. Adding the model's replies to 16 unrelated prompts lowered chat KL from 0.139 to 0.086.
+- Calibration on the model's own chat answers. Adding the model's replies to 16 unrelated prompts lowered chat KL from 0.139 to 0.086; replies to 48 prompts lower it further (8B 0.080 -> 0.064, 4B 0.133 -> 0.087, docs unchanged, 2026-10-27).
 - The drafter as one Core AI GPU program. It adds the 8B's hidden states to its context and drafts 7 tokens with a runner-up for each in one call, with fixed shapes so nothing recompiles.
 - One KV cache for every context size. Each call uses the smallest context the conversation fits in, which is faster at short context.
 - The MLP with the tokens on the width axis. Apple's iOS MLP puts the tokens on the convolution's batch axis, and for the 14B's larger weights the ANE then runs it once per token: a 14B layer took 16.8 ms at width 8 and 64.3 ms at width 32. With the tokens on the width axis, as Apple's attention has them, it takes 3.0 ms at both, and the 14B went from 2.9 to 28.5 tokens/s.
@@ -209,11 +209,10 @@ Tried, not worth it (measured 2026-10-27, details in [Benchmarks](docs/benchmark
 
 Coming, in this order:
 
-1. The published Qwen3 folders converted again with widths 16 and 64, so their first load halves too.
+1. The published Qwen3 folders converted again: widths 16 and 64 (half the first load) and 48 chat answers (closer to bf16 on chat).
 2. Long prompts: 32K context (a 32768-context export fails the ANE compile, and Core AI then runs it off the ANE; the KV cache and the mask need splitting into halves), faster prefill, and faster decode where the GPU still wins (at 5423 tokens plain MLX decodes 25.4 tokens/s, Anemone 17.9).
 3. Wider trees with re-rolled side branches. Offline, 36-row trees keep 26% more tokens per check on Qwen3-8B and 32% more on R1, but they need a width-32 check, 9% dearer per chunk.
-4. Closing the chat KL gap of the 4B and 14B.
-5. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
+4. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
 
 ## Docs
 

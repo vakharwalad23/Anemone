@@ -55,6 +55,21 @@ Halving the functions halves the compile: chunk 0 exported with widths 16 and 64
 
 Plain decoding (`--no-draft`) now runs at width 16 instead of 8, 1% slower.
 
+### More chat calibration
+
+The converter calibrates GPTQ on six standard library files, five machine-learning modules and the model's own answers to chat prompts. With 48 prompts instead of 16 (about 15K chat tokens instead of 5K), scored with e07 against bf16 (teacher forced; chat set = the 8B bench replies under each model's template):
+
+| weights | KL, docs | top-1, docs | KL, chat | top-1, chat |
+|---|---|---|---|---|
+| **Qwen3-8B, 48 chat answers** | **0.058** | **0.889** | **0.064** | **0.921** |
+| Qwen3-8B, 16 chat answers | 0.059 | 0.887 | 0.080 | 0.908 |
+| Qwen3-8B, MLX 4-bit | 0.085 | 0.870 | 0.098 | 0.883 |
+| **Qwen3-4B, 48 chat answers** | **0.078** | **0.890** | **0.087** | **0.904** |
+| Qwen3-4B, 16 chat answers | 0.077 | 0.891 | 0.133 | 0.911 |
+| Qwen3-4B, MLX 4-bit | 0.095 | 0.875 | 0.128 | 0.904 |
+
+The 4B now meets MLX on all four. The converter uses 48 answers from 2026-10-27; quantize time is unchanged (37 min for the 8B). The 14B is not measured yet.
+
 ### Tried, not worth it
 
 Drafting during the check. While the ANE checks cycle k, the GPU drafts cycle k+1 for the likeliest outcomes of that check (where the chain breaks and which token comes free). A guess that comes true skips the draft. The guesses need chains instead of the tree, and they cannot use the check's own model states. Six prompts, two interleaved rounds, all lossless:
