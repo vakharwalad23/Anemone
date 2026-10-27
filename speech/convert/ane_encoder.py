@@ -31,6 +31,9 @@ class AneEncoder(torch.nn.Module):
         mask = attention_mask.to(x.dtype)
         if self.subsampling is not None:
             x, mask = self.subsample(x, mask)
+        else:
+            # with int8 or LUT weights the ANE compiler rejects a program that starts or ends on a LayerNorm (S2, 2026-10-28)
+            x = x * mask[..., None]
         # relative positions run from T - 1 down to 1 - T, the middle of the longest window's table
         longest, frames = (self.positions.shape[1] + 1) // 2, x.shape[1]
         positions = self.positions[:, longest - frames : longest + frames - 1]
@@ -38,7 +41,7 @@ class AneEncoder(torch.nn.Module):
         bias = (mask[:, None, :, None] * mask[:, None, None, :] - 1) * 10000.0
         for block, convolution in zip(self.blocks, self.conv_modules):
             x = conformer_block(block, convolution, x, positions, bias, mask)
-        return x if self.projector is None else self.projector(x)
+        return x * mask[..., None] if self.projector is None else self.projector(x)
 
     def subsample(self, features: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = features.unsqueeze(1)
