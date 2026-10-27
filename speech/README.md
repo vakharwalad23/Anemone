@@ -2,13 +2,15 @@
 
 How fast Orukeet (Oruk AI's 0.6B ASR, a fine-tune of NVIDIA Parakeet-TDT 0.6B v3, https://huggingface.co/oruk/orukeet) runs on the ANE through Core AI, at the accuracy of the FluidAudio Core ML build. Experimental branch; nothing here is part of the Anemone SDK.
 
-Status: S0 to S2 done with FP16 weights; compressed weights (int8, LUT) do not compile for the ANE yet.
+Status: S0 to S3 and S7 done; the decode loop (S4), long files (S5) and live typing (S6) are next.
 
 | Step | Result | Report |
 |---|---|---|
 | S0 export and parity | Core AI FP16 ties or beats TapTalk's 6-bit Core ML build on clips up to 15 s: FLEURS en_us 3.53% vs 3.83%, LibriSpeech test-clean 1.51% vs 1.53%; FP32 tokens identical to transformers on 100 / 100 clips | `reports/s0-parity.md` |
 | S1 placement | Apple's export runs on the GPU (96.6 ms per 15 s window); with fp16 masks and a 4D conv module every op runs on the ANE: 31.3 ms vs 26.3 ms for TapTalk's 6-bit encoder; decoder graphs fastest on the CPU (0.15 ms per call) | `reports/s1-placement.md` |
-| **S2 window lengths** | **2.5 / 5 / 10 / 15 s functions over one FP16 weight set, tokens identical to the 15 s window on 3267 / 3267 clips; per clip 0.871x (FLEURS) and 0.811x (LibriSpeech) of TapTalk's time, same night, clips up to 15 s** | `reports/s2-windows.md` |
+| S2 window lengths | 2.5 / 5 / 10 / 15 s functions over one FP16 weight set, tokens identical to the 15 s window on 3267 / 3267 clips; per clip 0.871x (FLEURS) and 0.811x (LibriSpeech) of TapTalk's time, same night, clips up to 15 s | `reports/s2-windows.md` |
+| **S3 weights** | **int8 encoder as two 12-layer programs on the ANE: 12.1 / 12.5 / 15.8 / 30.2 ms per window; per clip 0.701x (FLEURS) and 0.652x (LibriSpeech) of TapTalk's time at 3.45% and 1.52% WER (TapTalk 3.83% and 1.53%); 6-bit LUT does not compile yet** | `reports/s3-weights.md` |
+| S7 energy | int8 windows use 0.80x (FLEURS) and 0.68x (LibriSpeech) of TapTalk's joules per audio second; both draw about 16 W, GPU idle | `reports/s7-energy.md` |
 
 M3 Pro, 18 GB, macOS 27.0.1 (26A434), AC power.
 
@@ -56,7 +58,7 @@ F_{enc} = \left\lceil \frac{F_{mel}}{8} \right\rceil, \quad F_{mel} = 1 + \left\
 - A static bundle truncates audio longer than its window without an error. S0 scores clips up to 15.0 s against the FluidAudio build on the same clips; full-set scores need the chunking planned for S5.
 - The FP32 bundle cannot run on the ANE (no FP32 there); it is an accuracy reference only.
 - `ms` in S0 hypotheses includes the stage capture used for token parity, so it is not a speed number. Timing starts in S1.
-- int8 and LUT encoders compile off the ANE (S2 report); FP16 cannot go below its 21 ms weight floor.
+- int8 runs on the ANE only split into two programs with masked boundaries (S3); 6-bit LUT weights still compile off it.
 
 ## S1 and S2: the ANE encoder
 
