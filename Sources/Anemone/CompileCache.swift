@@ -2,7 +2,7 @@ import CoreAI
 import Foundation
 
 /// Loads a Core AI program and builds `T` from it, compiling it again once if Core AI cannot use its cached copy.
-func loadProgram<T>(_ url: URL, on unit: ComputeUnitKind, _ build: (AIModel) throws -> T) async throws -> T {
+package func loadProgram<T>(_ url: URL, on unit: ComputeUnitKind, _ build: (AIModel) throws -> T) async throws -> T {
     let options = SpecializationOptions(preferredComputeUnitKind: unit)
     do {
         return try build(try await AIModel(contentsOf: url, options: options))

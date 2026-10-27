@@ -39,7 +39,8 @@ let package = Package(
         .executableTarget(
             name: "AnemoneSpeech",
             dependencies: [
-                .product(name: "CoreAISpeech", package: "coreai-models"),
+                "Anemone",
+                .product(name: "CoreAISpeech", package: "coreai-models"), .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             swiftSettings: settings

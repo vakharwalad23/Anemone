@@ -14,5 +14,7 @@ struct Hypothesis: Encodable {
     let seconds: Double
     let text: String
     let tokens: [Int]
+    let encodeMs: Double?
+    let decodeMs: Double?
     let error: String?
 }

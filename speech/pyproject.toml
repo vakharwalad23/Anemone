@@ -5,9 +5,12 @@ description = "Export Orukeet to Core AI and check it against the Transformers r
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "coreai-core==1.0.0b3",
+    "coreai-opt==0.3.0",
     "coreai-torch==0.4.3",
     "librosa>=0.11",
     "torch==2.9.0",
+    # 0.18 imports torch.nn.functional.ScalingType, which torch 2.9 lacks
+    "torchao==0.17.0",
     "transformers>=5.9.0,<5.10.1",
 ]
 

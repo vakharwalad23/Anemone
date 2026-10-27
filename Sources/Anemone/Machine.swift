@@ -2,14 +2,14 @@ import Foundation
 import IOKit.ps
 
 /// The Mac a bench ran on, saved with every result so numbers from different Macs can be compared.
-struct Machine: Codable {
-    let chip: String
-    let memoryGB: Int
-    let macOS: String
-    let build: String
-    let power: String
+package struct Machine: Codable {
+    package let chip: String
+    package let memoryGB: Int
+    package let macOS: String
+    package let build: String
+    package let power: String
 
-    static func current() -> Machine {
+    package static func current() -> Machine {
         let version = ProcessInfo.processInfo.operatingSystemVersion
         return Machine(
             chip: sysctlString("machdep.cpu.brand_string"), memoryGB: Int(ProcessInfo.processInfo.physicalMemory >> 30),

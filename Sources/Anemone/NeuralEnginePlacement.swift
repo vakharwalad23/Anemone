@@ -1,7 +1,7 @@
 import Foundation
 
 /// The functions of a compiled program that Core AI did not place on the ANE, read from its cache entry; nil if unreadable.
-func functionsOffNeuralEngine(_ program: URL, functions: [String]) -> [String]? {
+package func functionsOffNeuralEngine(_ program: URL, functions: [String]) -> [String]? {
     // when the ANE compiler rejects a program Core AI runs it elsewhere without an error (lab 2026-10-27: a layer took 21 to 28 ms, not about 2)
     guard let entry = try? compiledCopies(of: program).first,
         let manifests = FileManager.default.enumerator(at: entry, includingPropertiesForKeys: nil)?
