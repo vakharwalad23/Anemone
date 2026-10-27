@@ -48,6 +48,14 @@ Qwen3-14B, same setup, 2026-10-25:
 | mlx-dspark 0.20.3, the 14B DSpark drafter | 36.9 | 39.9 W | 1.17 J | 2 of 6 |
 | MLX 4-bit | 16.8 | 32.7 W | 2.05 J | 6 of 6 |
 
+DeepSeek-R1-0528-Qwen3-8B, which always thinks, with the Qwen3-8B drafter, same setup, 2026-10-27:
+
+| engine | tokens/s | system power | energy per token | output equal to plain greedy |
+|---|---|---|---|---|
+| **Anemone** | **30.0** | **20.2 W** | **0.74 J** | **6 of 6** |
+| mlx-dspark 0.20.3, the same drafter | 39.0 | 41.2 W | 1.15 J | 0 of 6 (2026-10-25) |
+| MLX 4-bit | 30.4 | 33.5 W | 1.16 J | 6 of 6 |
+
 - Tokens/s is decode speed (`anemone bench`, and mlx-dspark through [e15](docs/benchmarks.md#gpu-baselines) with its default settings). Power and energy are whole-system SMC readings over the generation window including prefill, two interleaved rounds each. See [Benchmarks](docs/benchmarks.md) for every run and its method.
 
 The 4-bit weights are also closer to the original model than MLX 4-bit (KL against bf16, lower is better):
@@ -99,7 +107,7 @@ swift build -c release
 .build/release/anemone run "Explain how a CPU cache works."
 ```
 
-The first run downloads the Qwen3-8B folder (6 GB) from the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face, which holds every converted model; pick another with `--model` or `ANEMONE_MODEL`. It then compiles the folder for the ANE, 12 to 14 minutes on an M3 Pro. Leave about 20 GB free: the compiled copies take about 12 GB, and with too little free disk macOS seems to drop the Neural Engine's copy, which costs a recompile ([Usage](docs/usage.md#when-a-model-compiles-again)). macOS caches the result per app, so later runs start in a few seconds.
+The first run downloads the Qwen3-8B folder (6 GB) from the [Anemone collection](https://huggingface.co/collections/vakharwalad23/anemone-6ade45a80c5ce62251609caa) on Hugging Face, which holds every converted model; pick another with `--model` or `ANEMONE_MODEL`. It then compiles the folder for the ANE, 12 to 14 minutes on an M3 Pro. Leave about 20 GB free: the compiled copies take about 12 GB, and when the disk runs low macOS deletes the Neural Engine's copy, which costs a recompile (tested 2026-10-27) ([Usage](docs/usage.md#when-a-model-compiles-again)). macOS caches the result per app, so later runs start in a few seconds.
 
 ```sh
 .build/release/anemone chat
@@ -176,7 +184,7 @@ See [Converting a model](docs/convert.md) for what each step does, how long it t
 
 ## Status and roadmap
 
-Working today: Qwen3-4B, Qwen3-8B and Qwen3-14B (thinking off) and DeepSeek-R1-0528-Qwen3-8B (it always thinks, and the Qwen3-8B drafter accepts about half as much on its text: 29.8 tokens/s), greedy decoding, up to 16384 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
+Working today: Qwen3-4B, Qwen3-8B and Qwen3-14B (thinking off) and DeepSeek-R1-0528-Qwen3-8B (it always thinks, and the Qwen3-8B drafter accepts about half as much on its text: 30.0 tokens/s, as fast as plain MLX at 1.5x less energy), greedy decoding, up to 16384 tokens of context, one request at a time, `run`, `chat`, `serve` (OpenAI-compatible, streaming) and `bench`.
 
 Done:
 
@@ -189,16 +197,23 @@ Done:
 - 8192-token context: the cliff at 8192 was Apple's attention transposing the scores; row-wise attention brings a chunk from 46.4 to 31.0 ms, and a 5449-token prompt decodes at 22.7 tokens/s, lossless.
 - 16384-token context: a 10923-token prompt decodes at 10.6 tokens/s (6.2 plain), lossless.
 - Qwen3-14B: 28.5 tokens/s at 0.74 J per token, lossless, after moving the MLP's tokens off the batch axis (it ran at 2.9 before). KL against bf16: docs 0.051, chat 0.068 (MLX 4-bit 0.074 and 0.058).
+- DeepSeek-R1-0528-Qwen3-8B published in the collection (2026-10-27): 30.0 tokens/s at 0.72 to 0.77 J per token, lossless; KL against bf16 at or below MLX 4-bit on docs and chat (0.240 and 0.129 vs 0.288 and 0.139).
+- A first load half as long: Core AI compiles every function of a program when it opens it, so the converter now exports only the call widths the engine uses (16 and 64). The 8B folder compiles in 414 s instead of 816 s at the same speed (2026-10-27); the Qwen3 folders on Hugging Face still carry four widths (the R1 folder has the two).
+
+Tried, not worth it (measured 2026-10-27, details in [Benchmarks](docs/benchmarks.md)):
+
+- Drafting the next guesses during the ANE check, for the likeliest outcomes of that check: 43.5 to 45.1 tokens/s against 47.4. The guesses come true on only 1% to 28% of checks, and drafts made without the newest model states keep fewer tokens.
+- Skipping the draft when it will miss: a perfect skip would add 6%, but the last checks do not predict the next miss, and real rules lose 3% to 8%.
+- Chaining the draft and the four ANE calls without waiting on the CPU: 0.3 ms per cycle.
+- Running the drafter on the ANE: the GPU program does not compile for the ANE, and an ANE version would take about 19 ms against 21.5 on the GPU.
 
 Coming, in this order:
 
-1. Draft while the ANE checks: the GPU drafts the next guesses during the current check instead of after it. The draft is 21.5 ms of each 86 ms cycle, and the GPU starts cold after every check (16 ms back to back, 32 to 37 ms after 64 ms idle).
-2. DeepSeek-R1-0528-Qwen3-8B on Hugging Face with the current converter, plus drafts from repeated text for its thinking (the Qwen3-8B drafter keeps only 1.5 tokens per cycle there).
-3. Confidence scheduling: a tree, a chain or no draft per cycle, so prompts like translation stop paying for drafts.
-4. Long prompts: 32K context, faster prefill, and faster decode where the GPU still wins (at 5423 tokens plain MLX decodes 25.4 tokens/s, Anemone 17.9).
-5. Wider trees (32 to 64 rows), and closing the chat KL gap of the 4B and 14B.
-6. A shorter first load (10 to 23 minutes on an M3 Pro today).
-7. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
+1. The published Qwen3 folders converted again with widths 16 and 64, so their first load halves too.
+2. Long prompts: 32K context (a 32768-context export fails the ANE compile, and Core AI then runs it off the ANE; the KV cache and the mask need splitting into halves), faster prefill, and faster decode where the GPU still wins (at 5423 tokens plain MLX decodes 25.4 tokens/s, Anemone 17.9).
+3. Wider trees with re-rolled side branches. Offline, 36-row trees keep 26% more tokens per check on Qwen3-8B and 32% more on R1, but they need a width-32 check, 9% dearer per chunk.
+4. Closing the chat KL gap of the 4B and 14B.
+5. Other chips: numbers from M1, M2, M4 and M5 Macs. See [Contributing](CONTRIBUTING.md).
 
 ## Docs
 

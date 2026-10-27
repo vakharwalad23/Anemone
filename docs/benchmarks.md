@@ -13,6 +13,67 @@ Every number Anemone quotes, with how it was measured, from 2026-10-23 to 2026-1
 
 Numbers from different macOS versions are not comparable; rerun both sides on the same Mac.
 
+## R1, the first load, and what did not pay (2026-10-27)
+
+M3 Pro 18 GB, macOS 27.0.1 (26A434), AC power. The models were downloaded again from Hugging Face; a download ran in the background during the energy rows (same for every engine).
+
+### Qwen3-8B, all engines the same night
+
+| engine | tokens/s | system power | GPU power | energy per token |
+|---|---|---|---|---|
+| **Anemone, the published folder (two rounds)** | **47.4 / 47.8** | **19.6 / 20.0 W** | **1.0 / 0.9 W** | **0.449 / 0.454 J** |
+| mlx-dspark 0.20.3, same drafter | 64.0 | 37.3 W | 14.7 W | 0.678 J |
+| MLX 4-bit plain | 30.6 | 32.9 W | 11.1 W | 1.162 J |
+
+Anemone: 1.50x less energy per token than mlx-dspark, 2.57x less than plain MLX; mlx-dspark is 1.34x faster.
+
+### DeepSeek-R1-0528-Qwen3-8B
+
+Converted with the stock converter and the Qwen3-8B DSpark tree drafter (DeepSeek publishes no drafter for R1). R1 always thinks, so the 256-token answers are thinking text. All rows the same night, 2026-10-27 (the published folder).
+
+| engine | math | code | explain | summary | advice | translate | mean |
+|---|---|---|---|---|---|---|---|
+| MLX 4-bit plain | 30.4 | 30.4 | 30.4 | 30.4 | 30.4 | 30.4 | 30.4 |
+| mlx-dspark, same drafter | 52.8 | 39.0 | 38.3 | 34.2 | 35.0 | 34.8 | 39.0 |
+| **Anemone** | **45.2** | **34.1** | **28.9** | **21.6** | **25.0** | **24.7** | **29.9** |
+
+- Anemone's output equals plain greedy decoding on 6 of 6 prompts; mlx-dspark's equalled it on 0 of 6 in the 2026-10-25 run (not checked on 2026-10-27).
+- Anemone accepts 1.53 drafts per cycle against 3.05 on Qwen3-8B: the drafter was trained on Qwen3-8B's answers, not on thinking text. Plain 16.3 tokens/s, first load 816 s.
+- Energy, whole system including prefill: Anemone 0.766 / 0.717 J/token at 20.8 / 19.5 W (two rounds); mlx-dspark 1.154 at 41.2 W; MLX plain 1.164 at 33.5 W. Anemone matches plain MLX's speed at 1.5x less energy; mlx-dspark is 1.3x faster but saves almost no energy over plain MLX.
+- Quality against bf16 R1 (e07; chat set = the Qwen3-8B folder's bench replies under R1's chat template): docs KL 0.240, top-1 0.798; chat KL 0.129, top-1 0.860. MLX 4-bit: 0.288 / 0.764 and 0.139 / 0.838. At or better than MLX on all four.
+
+### Where the first load goes
+
+`anebench` on chunk 0 of the published 8B folder with a cold cache: opening the program (`AIModel(contentsOf:)`) took 189.6 s, loading one function from it 0.1 s, and a second process opened it in 0.0 s. Core AI compiles every function of a program when it opens it, so the engine cannot skip the ones it never calls; only an export with fewer functions loads faster. Each 8B chunk has 20 (context rungs 256 to 4096 x widths 8, 16, 32, 64); the engine calls width 16 (verify), 64 (prefill) and 8 (plain decoding).
+
+Halving the functions halves the compile: chunk 0 exported with widths 16 and 64 (10 functions) compiled in 98.7 s, with all four widths (20) in 195.8 s. The converter now exports widths 16 and 64. The whole 8B folder, two interleaved rounds against the published folder:
+
+| folder | first load | speculative tokens/s | plain tokens/s | equal to plain greedy |
+|---|---|---|---|---|
+| **widths 16 and 64** | **414.1 s** | **47.6 / 47.1** | **16.1 / 16.1** | **6/6** |
+| widths 8, 16, 32, 64 (published) | 816.2 s | 47.4 / 47.4 | 16.3 / 16.3 | 6/6 |
+
+Plain decoding (`--no-draft`) now runs at width 16 instead of 8, 1% slower.
+
+### Tried, not worth it
+
+Drafting during the check. While the ANE checks cycle k, the GPU drafts cycle k+1 for the likeliest outcomes of that check (where the chain breaks and which token comes free). A guess that comes true skips the draft. The guesses need chains instead of the tree, and they cannot use the check's own model states. Six prompts, two interleaved rounds, all lossless:
+
+| drafts guessed per check | tokens/s | accepted per cycle | checks with a true guess |
+|---|---|---|---|
+| **0 (draft after the check, tree)** | **47.5 / 47.4** | **3.05** | - |
+| 1 | 43.5 / 43.6 | 2.58 | 0% to 22% |
+| 2 | 44.9 / 45.1 | 2.58 | 5% to 28% |
+| 3 | 43.7 / 44.4 | 2.50 | 11% to 28% |
+
+The ANE check did not slow down with the GPU drafting next to it (62.8 vs 63.2 ms).
+
+Skipping the draft when it will miss. 26% of chain cycles accept nothing. A cycle costs 84.3 ms for a + 1 tokens, a plain step 61.7 ms for one. Replaying the recorded cycles: always drafting 43.7 tokens/s, a perfect skip 46.3, skipping after an empty cycle 40.4, after two 42.5. The last cycles do not predict the next miss.
+
+Chaining calls without CPU waits (`chainbench`, width 16, ctx 1024): draft + check 82.38 ms per call vs 82.05 ms chained, 0.3 ms.
+
+The drafter on the ANE. The GPU drafter program does not compile for the ANE (`Unsupported mps.complex_to_planar op`, from Apple's macOS RoPE). By the measured layer cost, an ANE export would take about 8 ms for the 5 layers and 5 ms for the head, and the 7-step roll does not suit the ANE; on the CPU it reads 78 MB per step, about 5.5 ms. About 19 ms in all, against 21.5 ms on the GPU.
+
 ## Qwen3-14B, the MLP layout and 16K context (2026-10-25)
 
 M3 Pro 18 GB, macOS 27.0.1 (26A434), AC power.
@@ -100,19 +161,6 @@ Converted with the stock converter (see [Converting a model](convert.md#qwen3-4b
 - Anemone: verify 36.4 ms, draft 16.2 ms, accepted 2.97 per cycle; plain 28.8 tokens/s.
 - Energy, two rounds: Anemone 0.303 / 0.305 J/token at 19.6 W; mlx-dspark 0.430 / 0.423 at 33.9 / 33.1 W; MLX plain 0.640 / 0.638 at 31.1 / 30.9 W.
 - Quality against bf16 Qwen3-4B (e07, simulated): docs KL 0.077, top-1 0.891; chat KL 0.112, top-1 0.915. MLX 4-bit: 0.095 / 0.875 and 0.107 / 0.917.
-
-### DeepSeek-R1-0528-Qwen3-8B
-
-Converted with the stock converter and the Qwen3-8B DSpark tree drafter (DeepSeek publishes no drafter for R1). R1 always thinks, so the 256-token answers are thinking text.
-
-| engine | math | code | explain | summary | advice | translate | mean | equal to plain greedy |
-|---|---|---|---|---|---|---|---|---|
-| MLX 4-bit plain | 30.2 | 30.2 | 30.0 | 29.5 | 30.0 | 30.1 | 30.0 | 6/6 |
-| mlx-dspark, same drafter | 52.6 | 38.5 | 37.8 | 34.0 | 34.5 | 34.5 | 38.7 | 0/6 |
-| **Anemone** | **44.8** | **34.0** | **28.9** | **21.4** | **25.0** | **24.5** | **29.8** | **6/6** |
-
-- Anemone accepts 1.53 drafts per cycle against 3.01 on Qwen3-8B: the drafter was trained on Qwen3-8B's answers, not on thinking text. Plain 16.1 tokens/s, first load 714 s.
-- Quality against bf16 R1 (e07): docs KL 0.240, chat 0.152; MLX 4-bit 0.288 and 0.143.
 
 ### Energy
 
